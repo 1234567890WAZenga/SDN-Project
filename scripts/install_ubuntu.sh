@@ -7,10 +7,9 @@ echo "=== Mise à jour du système ==="
 sudo apt update
 sudo apt upgrade -y
 
-echo "=== Installation de Mininet, Open vSwitch et outils réseau ==="
+echo "=== Installation des paquets système de base ==="
 sudo apt install -y \
 mininet \
-python3-mininet \
 openvswitch-switch \
 openvswitch-common \
 iproute2 \
@@ -20,7 +19,20 @@ curl \
 wget \
 tcpdump \
 iperf \
-xterm
+xterm \
+git \
+nano \
+software-properties-common
+
+echo "=== Tentative d'installation du module Python Mininet via apt ==="
+
+# Certains dépôts Ubuntu fournissent python3-mininet, d'autres non.
+# On tente l'installation sans bloquer tout le script si le paquet n'existe pas.
+if apt-cache show python3-mininet >/dev/null 2>&1; then
+    sudo apt install -y python3-mininet
+else
+    echo "Paquet python3-mininet non disponible dans ce dépôt Ubuntu."
+fi
 
 echo "=== Installation de Python 3.8 et dépendances de compilation ==="
 sudo apt install -y \
@@ -36,25 +48,42 @@ libffi-dev \
 libssl-dev \
 libxml2-dev \
 libxslt1-dev \
-zlib1g-dev \
-git \
-nano
+zlib1g-dev
 
 echo "=== Démarrage de Open vSwitch ==="
 sudo service openvswitch-switch start
 
-echo "=== Vérification de Mininet côté commande système ==="
-mn --version || true
-
 echo "=== Vérification du module Python Mininet ==="
-python3 -c "from mininet.cli import CLI; print('Mininet Python OK')"
 
-echo "=== Vérification du module Python Mininet avec sudo ==="
+# Si Python 3 ne trouve pas le module mininet, on installe Mininet depuis les sources.
+if python3 -c "from mininet.cli import CLI; print('Mininet Python OK')" >/dev/null 2>&1; then
+    echo "Mininet Python déjà disponible pour python3."
+else
+    echo "Module Python Mininet absent. Installation de Mininet depuis les sources..."
+
+    cd /tmp
+    rm -rf mininet
+
+    git clone https://github.com/mininet/mininet.git
+    cd mininet
+
+    # Version stable classique de Mininet
+    git checkout 2.3.0
+
+    # Installer uniquement Mininet core + dépendances avec Python 3
+    sudo PYTHON=python3 ./util/install.sh -n
+fi
+
+echo "=== Vérification finale de Mininet Python ==="
+python3 -c "from mininet.cli import CLI; print('Mininet Python OK')"
 sudo python3 -c "from mininet.cli import CLI; print('Mininet Python OK avec sudo')"
+
+echo "=== Vérification de la commande mn ==="
+mn --version || true
 
 echo "=== Création de l'environnement virtuel Python pour Ryu et Flask ==="
 
-# Aller à la racine du projet
+# Retourner à la racine du projet
 cd "$(dirname "$0")/.."
 
 # Supprimer l'ancien environnement virtuel pour éviter les conflits
@@ -106,6 +135,7 @@ echo "source venv/bin/activate"
 echo ""
 echo "Puis lance :"
 echo "./scripts/run_controller.sh"
+echo "./scripts/run_dashboard.sh"
 echo ""
-echo "Pour Mininet, utilise :"
+echo "Pour Mininet, n'utilise pas le venv. Lance :"
 echo "sudo ./scripts/run_topology.sh"
