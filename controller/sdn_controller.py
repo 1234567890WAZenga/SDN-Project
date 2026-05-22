@@ -4,12 +4,12 @@
 Contrôleur SDN Ryu pour le projet :
 Mininet + Open vSwitch + Ryu + Dashboard Flask.
 
-Fonctions :
+Fonctions principales :
 - apprentissage MAC ;
 - forwarding L2 simple ;
-- règles firewall dynamiques depuis policies/firewall_rules.json ;
+- application de règles firewall dynamiques ;
 - collecte des statistiques OpenFlow ;
-- API HTTP interne sur le port 8080 pour le dashboard.
+- API HTTP interne pour le dashboard.
 """
 
 import json
@@ -27,14 +27,14 @@ from ryu.lib.packet import arp, ether_types, ethernet, ipv4, packet
 from ryu.ofproto import ofproto_v1_3
 
 
-# Chemin racine du projet
+# Racine du projet
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Fichier JSON contenant les règles firewall
+# Fichier des règles firewall
 POLICY_FILE = os.path.join(BASE_DIR, "policies", "firewall_rules.json")
 
 
-# État global partagé avec le dashboard
+# État global exposé au dashboard
 STATE = {
     "started_at": time.time(),
     "switches": {},
@@ -45,7 +45,7 @@ STATE = {
 }
 
 
-# Verrou pour éviter les conflits d'accès entre Ryu et l'API HTTP
+# Verrou pour sécuriser les accès concurrents à STATE
 STATE_LOCK = threading.Lock()
 
 # Référence globale vers l'application Ryu
@@ -54,8 +54,7 @@ CONTROLLER_APP = None
 
 def add_event(message):
     """
-    Ajoute un événement dans l'état global.
-    Les événements sont affichés dans le dashboard.
+    Ajoute un événement visible depuis le dashboard.
     """
 
     with STATE_LOCK:
@@ -67,27 +66,33 @@ def add_event(message):
             },
         )
 
-        # Garder uniquement les 80 derniers événements
+        # Garder seulement les 80 derniers événements
         STATE["events"] = STATE["events"][:80]
 
 
 def load_rules():
     """
-    Charge les règles firewall depuis le fichier JSON.
-    Retourne une liste vide si le fichier n'existe pas.
+    Charge les règles firewall depuis policies/firewall_rules.json.
     """
 
     if not os.path.exists(POLICY_FILE):
         return []
 
-    with open(POLICY_FILE, "r", encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with open(POLICY_FILE, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    except json.JSONDecodeError:
+        add_event("Erreur : fichier firewall_rules.json invalide")
+        return []
 
 
 def save_rules(rules):
     """
-    Sauvegarde les règles firewall dans le fichier JSON.
+    Sauvegarde les règles firewall.
     """
+
+    os.makedirs(os.path.dirname(POLICY_FILE), exist_ok=True)
 
     with open(POLICY_FILE, "w", encoding="utf-8") as handle:
         json.dump(rules, handle, indent=2)
@@ -95,7 +100,7 @@ def save_rules(rules):
 
 def ip_proto_name(proto):
     """
-    Convertit un numéro de protocole IP en nom lisible.
+    Convertit un numéro de protocole IP en texte.
     """
 
     if proto == 1:
@@ -139,14 +144,14 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         """
-        Répond aux requêtes CORS preflight.
+        Réponse CORS preflight.
         """
 
         self._send_json({"ok": True})
 
     def do_GET(self):
         """
-        Gère les requêtes GET de l'API.
+        Gère les requêtes GET.
         """
 
         path = urlparse(self.path).path
@@ -167,7 +172,7 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """
-        Gère les requêtes POST de l'API.
+        Gère les requêtes POST.
         """
 
         global CONTROLLER_APP
@@ -180,6 +185,7 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
 
             try:
                 data = json.loads(raw_body or "{}")
+
             except json.JSONDecodeError:
                 self._send_json({"error": "invalid json"}, 400)
                 return
@@ -208,7 +214,7 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
             with STATE_LOCK:
                 STATE["rules"] = rules
 
-            # Réinstaller les règles dans les switches connectés
+            # Réinstaller les règles sur les switches connectés
             if CONTROLLER_APP:
                 CONTROLLER_APP.install_policy_rules()
 
@@ -225,19 +231,31 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
         return
 
 
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    """
+    Serveur HTTP réutilisable pour éviter certains blocages après redémarrage.
+    """
+
+    allow_reuse_address = True
+
+
 def start_api_server():
     """
     Lance l'API HTTP interne du contrôleur sur le port 8080.
     """
 
-    server = ThreadingHTTPServer(("0.0.0.0", 8080), DashboardApiHandler)
-    add_event("API controleur disponible sur le port 8080")
-    server.serve_forever()
+    try:
+        server = ReusableThreadingHTTPServer(("0.0.0.0", 8080), DashboardApiHandler)
+        add_event("API controleur disponible sur le port 8080")
+        server.serve_forever()
+
+    except OSError as error:
+        add_event(f"Erreur API controleur : {error}")
 
 
 class SdnController(app_manager.RyuApp):
     """
-    Contrôleur SDN principal.
+    Contrôleur SDN principal basé sur Ryu.
     """
 
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -258,7 +276,7 @@ class SdnController(app_manager.RyuApp):
         # Switches connectés : self.datapaths[dpid] = datapath
         self.datapaths = {}
 
-        # Charger les règles firewall au démarrage
+        # Charger les règles au démarrage
         with STATE_LOCK:
             STATE["rules"] = load_rules()
 
@@ -283,7 +301,8 @@ class SdnController(app_manager.RyuApp):
         self.datapaths[datapath.id] = datapath
         self.mac_to_port.setdefault(datapath.id, {})
 
-        # Règle table-miss : envoyer les paquets inconnus au contrôleur
+        # Règle table-miss :
+        # les paquets inconnus sont envoyés au contrôleur
         match = parser.OFPMatch()
 
         actions = [
@@ -308,7 +327,7 @@ class SdnController(app_manager.RyuApp):
                 "status": "connected",
             }
 
-        # Appliquer les règles firewall au nouveau switch
+        # Installer les règles firewall sur ce switch
         self.install_policy_rules(datapath)
 
     def add_flow(
@@ -345,64 +364,6 @@ class SdnController(app_manager.RyuApp):
 
         datapath.send_msg(flow_mod)
 
-    def install_policy_rules(self, datapath=None):
-        """
-        Installe les règles firewall de type deny.
-
-        Si datapath est fourni, applique les règles seulement à ce switch.
-        Sinon, applique les règles à tous les switches connectés.
-        """
-
-        datapaths = [datapath] if datapath else list(self.datapaths.values())
-
-        rules = load_rules()
-
-        with STATE_LOCK:
-            STATE["rules"] = rules
-
-        for dp in datapaths:
-            self.delete_policy_rules(dp)
-
-            for rule in rules:
-                if not rule.get("enabled"):
-                    continue
-
-                if rule.get("action") != "deny":
-                    continue
-
-                match_kwargs = {
-                    "eth_type": ether_types.ETH_TYPE_IP,
-                }
-
-                if rule.get("src_ip"):
-                    match_kwargs["ipv4_src"] = rule["src_ip"]
-
-                if rule.get("dst_ip"):
-                    match_kwargs["ipv4_dst"] = rule["dst_ip"]
-
-                proto = rule.get("proto", "any").lower()
-
-                if proto == "icmp":
-                    match_kwargs["ip_proto"] = 1
-                elif proto == "tcp":
-                    match_kwargs["ip_proto"] = 6
-                elif proto == "udp":
-                    match_kwargs["ip_proto"] = 17
-
-                match = dp.ofproto_parser.OFPMatch(**match_kwargs)
-
-                # Aucune action = drop
-                self.add_flow(
-                    datapath=dp,
-                    priority=100,
-                    match=match,
-                    actions=[],
-                    idle_timeout=0,
-                    hard_timeout=0,
-                )
-
-        add_event("Regles de politique appliquees")
-
     def delete_policy_rules(self, datapath):
         """
         Supprime les anciennes règles firewall de priorité 100.
@@ -422,10 +383,76 @@ class SdnController(app_manager.RyuApp):
 
         datapath.send_msg(flow_mod)
 
+    def install_policy_rules(self, datapath=None):
+        """
+        Installe les règles firewall de type deny.
+
+        Si datapath est fourni, applique les règles seulement à ce switch.
+        Sinon, applique les règles à tous les switches connectés.
+        """
+
+        datapaths = [datapath] if datapath else list(self.datapaths.values())
+
+        rules = load_rules()
+
+        with STATE_LOCK:
+            STATE["rules"] = rules
+
+        for dp in datapaths:
+            # Supprimer les anciennes règles firewall
+            self.delete_policy_rules(dp)
+
+            for rule in rules:
+                # Appliquer uniquement les règles activées
+                if not rule.get("enabled"):
+                    continue
+
+                # Appliquer uniquement les règles deny
+                if rule.get("action") != "deny":
+                    continue
+
+                match_kwargs = {
+                    "eth_type": ether_types.ETH_TYPE_IP,
+                }
+
+                # IP source
+                if rule.get("src_ip"):
+                    match_kwargs["ipv4_src"] = rule["src_ip"]
+
+                # IP destination
+                if rule.get("dst_ip"):
+                    match_kwargs["ipv4_dst"] = rule["dst_ip"]
+
+                # Protocole
+                proto = rule.get("proto", "any").lower()
+
+                if proto == "icmp":
+                    match_kwargs["ip_proto"] = 1
+
+                elif proto == "tcp":
+                    match_kwargs["ip_proto"] = 6
+
+                elif proto == "udp":
+                    match_kwargs["ip_proto"] = 17
+
+                match = dp.ofproto_parser.OFPMatch(**match_kwargs)
+
+                # Aucune action = drop
+                self.add_flow(
+                    datapath=dp,
+                    priority=100,
+                    match=match,
+                    actions=[],
+                    idle_timeout=0,
+                    hard_timeout=0,
+                )
+
+        add_event("Regles de politique appliquees")
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
         """
-        Gère les paquets Packet-In envoyés par les switches.
+        Gère les Packet-In envoyés par les switches.
 
         Fonctionnement :
         - apprentissage MAC ;
@@ -441,8 +468,10 @@ class SdnController(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
+        # Port d'entrée du paquet
         in_port = msg.match["in_port"]
 
+        # Analyse du paquet Ethernet
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
 
@@ -457,12 +486,13 @@ class SdnController(app_manager.RyuApp):
         src = eth.src
         dst = eth.dst
 
+        # Initialiser la table MAC du switch
         self.mac_to_port.setdefault(dpid, {})
 
-        # Apprentissage MAC
+        # Apprendre l'adresse MAC source
         self.mac_to_port[dpid][src] = in_port
 
-        # Découverte IP / ARP
+        # Détection IP ou ARP pour le dashboard
         ip_pkt = pkt.get_protocol(ipv4.ipv4)
         arp_pkt = pkt.get_protocol(arp.arp)
 
@@ -482,7 +512,7 @@ class SdnController(app_manager.RyuApp):
                     "port": in_port,
                 }
 
-        # Déterminer le port de sortie
+        # Trouver le port de sortie
         out_port = self.mac_to_port[dpid].get(dst, ofproto.OFPP_FLOOD)
 
         actions = [parser.OFPActionOutput(out_port)]
@@ -503,6 +533,7 @@ class SdnController(app_manager.RyuApp):
                 idle_timeout=30,
             )
 
+        # Envoyer le paquet
         data = None
 
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -522,7 +553,8 @@ class SdnController(app_manager.RyuApp):
         """
         Convertit un objet OFPMatch Ryu en dictionnaire Python.
 
-        Ne pas utiliser dict(stat.match), car cela peut provoquer :
+        Important :
+        Ne jamais utiliser dict(stat.match), car cela peut provoquer :
         KeyError: 0
         """
 
@@ -553,7 +585,9 @@ class SdnController(app_manager.RyuApp):
         while True:
             for datapath in list(self.datapaths.values()):
                 parser = datapath.ofproto_parser
+
                 request = parser.OFPFlowStatsRequest(datapath)
+
                 datapath.send_msg(request)
 
             hub.sleep(5)
@@ -572,7 +606,8 @@ class SdnController(app_manager.RyuApp):
             if stat.priority == 0:
                 continue
 
-            # Conversion correcte du match Ryu
+            # Correction importante :
+            # ne pas faire dict(stat.match)
             match = self.match_to_dict(stat.match)
 
             proto = ip_proto_name(match.get("ip_proto"))
