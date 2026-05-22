@@ -112,3 +112,5 @@ sh ovs-ofctl dump-flows s2 -O OpenFlow13
 5. Observer les flux et les statistiques dans le dashboard.
 6. Bloquer un flux depuis le dashboard.
 7. Refaire le test et montrer que le trafic est bloque.
+
+

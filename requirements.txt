@@ -1,3 +1,15 @@
-flask==3.0.3
-requests==2.32.3
+
+# Versions figées pour éviter les conflits avec Ryu 4.34
+
+pip==23.3.2
+setuptools==67.7.2
+wheel==0.41.3
+
+# Dépendances critiques pour Ryu
+dnspython==1.16.0
+eventlet==0.30.2
 ryu==4.34
+
+# Dashboard Flask
+Flask==2.3.3
+requests==2.31.0
