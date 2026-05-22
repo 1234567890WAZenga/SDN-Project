@@ -10,6 +10,7 @@ sudo apt upgrade -y
 echo "=== Installation de Mininet, Open vSwitch et outils réseau ==="
 sudo apt install -y \
 mininet \
+python3-mininet \
 openvswitch-switch \
 openvswitch-common \
 iproute2 \
@@ -42,30 +43,45 @@ nano
 echo "=== Démarrage de Open vSwitch ==="
 sudo service openvswitch-switch start
 
-echo "=== Création de l'environnement virtuel Python ==="
+echo "=== Vérification de Mininet côté commande système ==="
+mn --version || true
+
+echo "=== Vérification du module Python Mininet ==="
+python3 -c "from mininet.cli import CLI; print('Mininet Python OK')"
+
+echo "=== Vérification du module Python Mininet avec sudo ==="
+sudo python3 -c "from mininet.cli import CLI; print('Mininet Python OK avec sudo')"
+
+echo "=== Création de l'environnement virtuel Python pour Ryu et Flask ==="
+
+# Aller à la racine du projet
 cd "$(dirname "$0")/.."
 
-# Supprimer l'ancien environnement seulement si tu veux une installation propre
+# Supprimer l'ancien environnement virtuel pour éviter les conflits
 if [ -d "venv" ]; then
     echo "Ancien environnement virtuel détecté : suppression..."
     rm -rf venv
 fi
 
+# Créer l'environnement virtuel avec Python 3.8
 python3.8 -m venv venv
 
 echo "=== Activation de l'environnement virtuel ==="
 source venv/bin/activate
 
-echo "=== Vérification de Python utilisé ==="
+echo "=== Vérification de Python utilisé dans l'environnement virtuel ==="
 which python
 python --version
 
-echo "=== Installation des versions Python compatibles avec Ryu ==="
+echo "=== Installation des versions Python compatibles avec Ryu 4.34 ==="
+
+# Versions figées pour éviter les erreurs avec Ryu
 python -m pip install --force-reinstall --no-cache-dir \
 "pip==23.3.2" \
 "setuptools==67.7.2" \
 "wheel==0.41.3"
 
+# Installation de Ryu, Flask et dépendances compatibles
 python -m pip install --no-cache-dir --no-build-isolation \
 "dnspython==1.16.0" \
 "eventlet==0.30.2" \
@@ -73,16 +89,23 @@ python -m pip install --no-cache-dir --no-build-isolation \
 "Flask==2.3.3" \
 "requests==2.31.0"
 
+echo "=== Vérification de Ryu ==="
+ryu-manager --version
+
 echo "=== Test Mininet ==="
 sudo mn --test pingall
 sudo mn -c
 
 echo "=== Installation terminée ==="
 echo ""
-echo "IMPORTANT : avant de lancer Ryu ou Flask, active l'environnement virtuel :"
-echo "source venv/bin/activate"
+echo "IMPORTANT : Ryu et Flask utilisent l'environnement virtuel."
+echo "Avant de lancer le contrôleur ou le dashboard, fais :"
 echo ""
-echo "Exemple :"
 echo "cd ~/sdn_project"
 echo "source venv/bin/activate"
+echo ""
+echo "Puis lance :"
 echo "./scripts/run_controller.sh"
+echo ""
+echo "Pour Mininet, utilise :"
+echo "sudo ./scripts/run_topology.sh"
