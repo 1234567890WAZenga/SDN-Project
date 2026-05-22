@@ -1,0 +1,20 @@
+[
+  {
+    "id": "block_h2_to_web",
+    "enabled": true,
+    "src_ip": "10.0.0.2",
+    "dst_ip": "10.0.0.100",
+    "proto": "any",
+    "action": "deny",
+    "description": "Bloquer H2 vers le serveur web"
+  },
+  {
+    "id": "block_h3_to_h4_icmp",
+    "enabled": false,
+    "src_ip": "10.0.0.3",
+    "dst_ip": "10.0.0.4",
+    "proto": "icmp",
+    "action": "deny",
+    "description": "Bloquer ICMP de H3 vers H4"
+  }
+]

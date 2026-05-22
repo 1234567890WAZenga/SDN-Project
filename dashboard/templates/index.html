@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard SDN</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Dashboard SDN</h1>
+        <p>Supervision et gestion dynamique des flux OpenFlow</p>
+      </div>
+      <div class="status">
+        <span id="apiStatus">Connexion...</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="metrics">
+        <article>
+          <span>Switches</span>
+          <strong id="switchCount">0</strong>
+        </article>
+        <article>
+          <span>Hotes detectes</span>
+          <strong id="hostCount">0</strong>
+        </article>
+        <article>
+          <span>Flux actifs</span>
+          <strong id="flowCount">0</strong>
+        </article>
+        <article>
+          <span>Regles</span>
+          <strong id="ruleCount">0</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panelHeader">
+          <h2>Regles de securite</h2>
+        </div>
+        <div id="rules"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHeader">
+          <h2>Metriques par switch</h2>
+        </div>
+        <div id="switchMetrics" class="switchMetrics"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHeader">
+          <h2>Flux OpenFlow</h2>
+        </div>
+        <div class="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Switch</th>
+                <th>Priorite</th>
+                <th>Match</th>
+                <th>Proto</th>
+                <th>Paquets</th>
+                <th>Octets</th>
+                <th>Duree</th>
+              </tr>
+            </thead>
+            <tbody id="flows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="columns">
+        <div class="panel">
+          <div class="panelHeader">
+            <h2>Hotes</h2>
+          </div>
+          <div id="hosts"></div>
+        </div>
+        <div class="panel">
+          <div class="panelHeader">
+            <h2>Evenements</h2>
+          </div>
+          <div id="events"></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      async function fetchJson(url, options) {
+        const response = await fetch(url, options);
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      }
+
+      function text(value) {
+        if (value === null || value === undefined) return "";
+        if (typeof value === "object") return JSON.stringify(value);
+        return String(value);
+      }
+
+      async function toggleRule(id) {
+        await fetchJson("/api/rules/toggle", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({id})
+        });
+        await refresh();
+      }
+
+      function renderRules(rules) {
+        const container = document.getElementById("rules");
+        container.innerHTML = "";
+        if (!rules.length) {
+          container.innerHTML = "<p class='muted'>Aucune regle configuree.</p>";
+          return;
+        }
+        for (const rule of rules) {
+          const row = document.createElement("div");
+          row.className = "rule";
+          row.innerHTML = `
+            <div>
+              <strong>${rule.description || rule.id}</strong>
+              <span>${rule.src_ip || "*"} -> ${rule.dst_ip || "*"} / ${rule.proto || "any"}</span>
+            </div>
+            <button class="${rule.enabled ? "danger" : "secondary"}" data-id="${rule.id}">
+              ${rule.enabled ? "Desactiver" : "Activer"}
+            </button>
+          `;
+          row.querySelector("button").addEventListener("click", () => toggleRule(rule.id));
+          container.appendChild(row);
+        }
+      }
+
+      function renderFlows(flows) {
+        const tbody = document.getElementById("flows");
+        tbody.innerHTML = "";
+        for (const flow of flows.sort((a, b) => b.packets - a.packets)) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>s${flow.switch}</td>
+            <td>${flow.priority}</td>
+            <td>${text(flow.match)}</td>
+            <td>${flow.proto}</td>
+            <td>${flow.packets}</td>
+            <td>${flow.bytes}</td>
+            <td>${flow.duration}s</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      function renderSwitchMetrics(flows) {
+        const container = document.getElementById("switchMetrics");
+        container.innerHTML = "";
+        const bySwitch = {};
+        for (const flow of flows) {
+          const key = "s" + flow.switch;
+          if (!bySwitch[key]) bySwitch[key] = {packets: 0, bytes: 0, flows: 0};
+          bySwitch[key].packets += Number(flow.packets || 0);
+          bySwitch[key].bytes += Number(flow.bytes || 0);
+          bySwitch[key].flows += 1;
+        }
+        const entries = Object.entries(bySwitch);
+        if (!entries.length) {
+          container.innerHTML = "<p class='muted metricEmpty'>Aucune metrique disponible pour le moment.</p>";
+          return;
+        }
+        const maxPackets = Math.max(...entries.map(([, item]) => item.packets), 1);
+        for (const [sw, item] of entries) {
+          const width = Math.max(4, Math.round((item.packets / maxPackets) * 100));
+          const row = document.createElement("div");
+          row.className = "metricRow";
+          row.innerHTML = `
+            <div class="metricLabel">
+              <strong>${sw}</strong>
+              <span>${item.flows} flux - ${item.packets} paquets - ${item.bytes} octets</span>
+            </div>
+            <div class="barTrack"><div class="barFill" style="width:${width}%"></div></div>
+          `;
+          container.appendChild(row);
+        }
+      }
+
+      function renderHosts(hosts) {
+        const container = document.getElementById("hosts");
+        container.innerHTML = "";
+        const entries = Object.entries(hosts);
+        if (!entries.length) {
+          container.innerHTML = "<p class='muted'>Lance un ping pour detecter les hotes.</p>";
+          return;
+        }
+        for (const [ip, host] of entries) {
+          const row = document.createElement("div");
+          row.className = "host";
+          row.innerHTML = `<strong>${ip}</strong><span>${host.mac} - s${host.switch}, port ${host.port}</span>`;
+          container.appendChild(row);
+        }
+      }
+
+      function renderEvents(events) {
+        const container = document.getElementById("events");
+        container.innerHTML = "";
+        for (const event of events.slice(0, 12)) {
+          const row = document.createElement("div");
+          row.className = "event";
+          row.innerHTML = `<span>${event.time}</span><p>${event.message}</p>`;
+          container.appendChild(row);
+        }
+      }
+
+      async function refresh() {
+        try {
+          const state = await fetchJson("/api/state");
+          document.getElementById("apiStatus").textContent = "Controleur connecte";
+          document.getElementById("apiStatus").className = "ok";
+          document.getElementById("switchCount").textContent = Object.keys(state.switches || {}).length;
+          document.getElementById("hostCount").textContent = Object.keys(state.hosts || {}).length;
+          document.getElementById("flowCount").textContent = (state.flows || []).length;
+          document.getElementById("ruleCount").textContent = (state.rules || []).length;
+          renderRules(state.rules || []);
+          renderSwitchMetrics(state.flows || []);
+          renderFlows(state.flows || []);
+          renderHosts(state.hosts || {});
+          renderEvents(state.events || []);
+        } catch (error) {
+          document.getElementById("apiStatus").textContent = "Controleur indisponible";
+          document.getElementById("apiStatus").className = "bad";
+        }
+      }
+
+      refresh();
+      setInterval(refresh, 3000);
+    </script>
+  </body>
+</html>
