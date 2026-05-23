@@ -504,6 +504,7 @@ class SdnController(app_manager.RyuApp):
         actions,
         idle_timeout=0,
         hard_timeout=0,
+        cookie=0,
     ):
         """
         Ajoute une règle OpenFlow dans un switch.
@@ -521,6 +522,7 @@ class SdnController(app_manager.RyuApp):
 
         flow_mod = parser.OFPFlowMod(
             datapath=datapath,
+            cookie=cookie,
             priority=priority,
             match=match,
             instructions=instructions,
@@ -540,10 +542,11 @@ class SdnController(app_manager.RyuApp):
 
         flow_mod = parser.OFPFlowMod(
             datapath=datapath,
+            cookie=1,
+            cookie_mask=0xFFFFFFFFFFFFFFFF,
             command=ofproto.OFPFC_DELETE,
             out_port=ofproto.OFPP_ANY,
             out_group=ofproto.OFPG_ANY,
-            priority=100,
             match=parser.OFPMatch(),
         )
 
@@ -611,6 +614,7 @@ class SdnController(app_manager.RyuApp):
                     actions=[],
                     idle_timeout=0,
                     hard_timeout=0,
+                    cookie=1,
                 )
                 add_event(
                     f"Flux bloque par politique sur S{dp.id} : {host_label(rule.get('src_ip'))} -> {host_label(rule.get('dst_ip'))}",
