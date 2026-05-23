@@ -113,6 +113,52 @@
         </article>
       </section>
 
+      <section class="panel topologyConfigPanel">
+        <div class="panelTitle">
+          <div>
+            <span class="sectionLabel">Configuration</span>
+            <h2>Paramètres de la topologie</h2>
+          </div>
+          <span class="hint" id="topologyConfigStatus">Chargement de topology_config.json...</span>
+        </div>
+        <div class="configGrid">
+          <label>
+            <span>Switches</span>
+            <input id="cfgSwitches" type="number" min="1" max="12" value="3">
+          </label>
+          <label>
+            <span>Hôtes par switch</span>
+            <input id="cfgHostsPerSwitch" type="number" min="1" max="20" value="2">
+          </label>
+          <label>
+            <span>Type</span>
+            <select id="cfgTopologyType">
+              <option value="linear">Linéaire</option>
+            </select>
+          </label>
+          <label>
+            <span>Serveur web</span>
+            <select id="cfgWebEnabled">
+              <option value="true">Activé</option>
+              <option value="false">Désactivé</option>
+            </select>
+          </label>
+          <label>
+            <span>Switch du serveur web</span>
+            <input id="cfgWebSwitch" type="number" min="1" max="12" value="1">
+          </label>
+          <label>
+            <span>Dernier octet IP web</span>
+            <input id="cfgWebIp" type="number" min="50" max="250" value="100">
+          </label>
+          <button id="saveTopologyBtn" class="primaryBtn">Sauvegarder</button>
+        </div>
+        <p class="configNote">
+          Les changements s'appliquent au prochain lancement de Mininet. Arrête la topologie actuelle puis relance
+          <code>sudo ./scripts/run_topology.sh</code>.
+        </p>
+      </section>
+
       <section class="panel topologyPanel">
         <div class="panelTitle topologyTitle">
           <div>
@@ -280,6 +326,7 @@
         {ip: "10.0.0.3", name: "H3", switch: "2"},
         {ip: "10.0.0.4", name: "H4", switch: "2"}
       ];
+      let configuredSwitches = 2;
 
       let topologyZoom = 1;
 
@@ -323,6 +370,87 @@
           body: JSON.stringify({id})
         });
         await refresh();
+      }
+
+      function hostsFromConfig(config) {
+        const topology = (config || {}).topology || {};
+        const addressing = (config || {}).addressing || {};
+        const prefix = addressing.host_prefix || "10.0.0.";
+        const switches = Number(topology.switches || 2);
+        const hostsPerSwitch = Number(topology.hosts_per_switch || 2);
+        const hosts = [];
+        let nextHost = Number(addressing.host_start || 1);
+
+        for (let sw = 1; sw <= switches; sw++) {
+          for (let count = 0; count < hostsPerSwitch; count++) {
+            hosts.push({ip: prefix + nextHost, name: "H" + nextHost, switch: String(sw), role: "client"});
+            nextHost++;
+          }
+        }
+
+        for (const server of topology.servers || []) {
+          hosts.push({
+            ip: prefix + Number(server.ip_last_octet || 100),
+            name: server.label || server.name || "Serveur",
+            switch: String(server.switch || 1),
+            role: "server"
+          });
+        }
+
+        return hosts;
+      }
+
+      async function loadTopologyConfig() {
+        const status = document.getElementById("topologyConfigStatus");
+        try {
+          const result = await fetchJson("/api/topology-config");
+          const config = result.config || {};
+          const topology = config.topology || {};
+          const servers = topology.servers || [];
+          const web = servers.find((server) => server.name === "web1") || servers[0] || {};
+
+          configuredSwitches = Number(topology.switches || 2);
+          expectedHosts = hostsFromConfig(config);
+          document.getElementById("cfgSwitches").value = configuredSwitches;
+          document.getElementById("cfgHostsPerSwitch").value = Number(topology.hosts_per_switch || 2);
+          document.getElementById("cfgTopologyType").value = topology.type || "linear";
+          document.getElementById("cfgWebEnabled").value = servers.length ? "true" : "false";
+          document.getElementById("cfgWebSwitch").value = Number(web.switch || 1);
+          document.getElementById("cfgWebIp").value = Number(web.ip_last_octet || 100);
+          status.textContent = "Configuration prête";
+          status.className = "hint okText";
+          renderTopology({switches: {}, hosts: {}, topology: {switches: configuredSwitches, expected_hosts: expectedHosts}});
+        } catch (error) {
+          status.textContent = "Impossible de charger topology_config.json";
+          status.className = "hint dangerText";
+        }
+      }
+
+      async function saveTopologyConfig() {
+        const status = document.getElementById("topologyConfigStatus");
+        const payload = {
+          switches: Number(document.getElementById("cfgSwitches").value),
+          hosts_per_switch: Number(document.getElementById("cfgHostsPerSwitch").value),
+          type: document.getElementById("cfgTopologyType").value,
+          web_enabled: document.getElementById("cfgWebEnabled").value === "true",
+          web_switch: Number(document.getElementById("cfgWebSwitch").value),
+          web_ip_last_octet: Number(document.getElementById("cfgWebIp").value)
+        };
+
+        status.textContent = "Sauvegarde...";
+        try {
+          const result = await fetchJson("/api/topology-config", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload)
+          });
+          status.textContent = result.message || "Configuration sauvegardée";
+          status.className = "hint warnText";
+          await loadTopologyConfig();
+        } catch (error) {
+          status.textContent = "Erreur de sauvegarde. Vérifie les valeurs.";
+          status.className = "hint dangerText";
+        }
       }
 
       async function runMininetCommand(command) {
@@ -408,18 +536,10 @@
         }
       }
 
-      function renderSwitchMetrics(flows) {
+      function renderSwitchMetrics(summary) {
         const container = document.getElementById("switchMetrics");
         container.innerHTML = "";
-        const bySwitch = {};
-        for (const flow of flows) {
-          const key = "S" + flow.switch;
-          if (!bySwitch[key]) bySwitch[key] = {packets: 0, bytes: 0, flows: 0};
-          bySwitch[key].packets += Number(flow.packets || 0);
-          bySwitch[key].bytes += Number(flow.bytes || 0);
-          bySwitch[key].flows += 1;
-        }
-        const entries = Object.entries(bySwitch);
+        const entries = Object.entries((summary || {}).by_switch || {});
         if (!entries.length) {
           container.innerHTML = "<p class='empty'>Aucune charge mesurée. Génère du trafic dans Mininet.</p>";
           return;
@@ -548,10 +668,11 @@
             role: host.service === "http" || host.service === "server" ? "server" : "client"
           }));
         }
+        configuredSwitches = Number(topology.switches || configuredSwitches || 2);
 
         canvas.innerHTML = "";
 
-        const expectedSwitchCount = Number(topology.switches || 2);
+        const expectedSwitchCount = Number(configuredSwitches || 2);
         const expectedSwitches = Array.from({length: expectedSwitchCount}, (_, index) => String(index + 1));
         const activeSwitches = switches.length
           ? Array.from(new Set([...expectedSwitches, ...switches])).sort((a, b) => Number(a) - Number(b))
@@ -713,7 +834,7 @@
           document.getElementById("packetCount").textContent = summary.total_packets || 0;
           document.getElementById("byteCount").textContent = fmtBytes(summary.total_bytes || 0);
           renderRules(state.rules || []);
-          renderSwitchMetrics(state.flows || []);
+          renderSwitchMetrics(summary);
           renderProtocolMetrics(summary);
           renderTopFlows(summary);
           renderFlows(state.flows || []);
@@ -728,7 +849,7 @@
           document.getElementById("apiStatusDot").className = "statusDot bad";
           document.getElementById("uptime").textContent = "Vérifie Ryu sur le port 8080";
           renderRules([]);
-          renderSwitchMetrics([]);
+          renderSwitchMetrics({});
           renderProtocolMetrics({});
           renderTopFlows({});
           renderFlows([]);
@@ -744,6 +865,7 @@
         button.addEventListener("click", () => runMininetCommand(button.dataset.command));
       });
       document.getElementById("runCommandBtn").addEventListener("click", () => runMininetCommand());
+      document.getElementById("saveTopologyBtn").addEventListener("click", saveTopologyConfig);
       document.getElementById("commandInput").addEventListener("keydown", (event) => {
         if (event.key === "Enter") runMininetCommand();
       });
@@ -752,6 +874,7 @@
       document.getElementById("topologyZoomIn").addEventListener("click", () => setTopologyZoom(topologyZoom + 0.1));
       document.getElementById("topologyZoomReset").addEventListener("click", () => setTopologyZoom(1));
 
+      loadTopologyConfig();
       refresh();
       setInterval(refresh, 3000);
     </script>
