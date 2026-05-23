@@ -267,6 +267,31 @@
               <h2>Règles dynamiques</h2>
             </div>
           </div>
+          <form id="ruleForm" class="ruleForm">
+            <label>
+              <span>Description</span>
+              <input id="ruleDescription" type="text" placeholder="Bloquer H2 vers Web">
+            </label>
+            <label>
+              <span>IP source</span>
+              <input id="ruleSrc" type="text" placeholder="10.0.0.2">
+            </label>
+            <label>
+              <span>IP destination</span>
+              <input id="ruleDst" type="text" placeholder="10.0.0.100">
+            </label>
+            <label>
+              <span>Protocole</span>
+              <select id="ruleProto">
+                <option value="any">any</option>
+                <option value="icmp">icmp</option>
+                <option value="tcp">tcp</option>
+                <option value="udp">udp</option>
+              </select>
+            </label>
+            <button id="createRuleBtn" class="primaryBtn" type="submit">Ajouter</button>
+          </form>
+          <p id="ruleStatus" class="hint policyHint">Les règles sont appliquées immédiatement sur les switches OpenFlow connectés.</p>
           <div id="rules" class="ruleList"></div>
         </article>
 
@@ -355,6 +380,15 @@
         return String(value);
       }
 
+      function html(value) {
+        return text(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
       function hostName(ip, hosts) {
         if (!ip) return "*";
         const known = hosts[ip];
@@ -370,6 +404,55 @@
           body: JSON.stringify({id})
         });
         await refresh();
+      }
+
+      async function createRule(event) {
+        event.preventDefault();
+        const status = document.getElementById("ruleStatus");
+        const payload = {
+          description: document.getElementById("ruleDescription").value.trim(),
+          src_ip: document.getElementById("ruleSrc").value.trim(),
+          dst_ip: document.getElementById("ruleDst").value.trim(),
+          proto: document.getElementById("ruleProto").value,
+          action: "deny",
+          enabled: true
+        };
+
+        status.textContent = "Application de la politique...";
+        status.className = "hint policyHint warnText";
+        try {
+          const result = await fetchJson("/api/rules/create", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload)
+          });
+          document.getElementById("ruleForm").reset();
+          status.textContent = `Politique appliquée. ${result.rules ? result.rules.length : 0} règle(s) configurée(s).`;
+          status.className = "hint policyHint okText";
+          await refresh();
+        } catch (error) {
+          status.textContent = "Règle refusée : indique une IP source ou destination valide.";
+          status.className = "hint policyHint dangerText";
+        }
+      }
+
+      async function deleteRule(id) {
+        const status = document.getElementById("ruleStatus");
+        status.textContent = "Suppression de la politique...";
+        status.className = "hint policyHint warnText";
+        try {
+          await fetchJson("/api/rules/delete", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({id})
+          });
+          status.textContent = "Politique supprimée et règles OpenFlow réinstallées.";
+          status.className = "hint policyHint okText";
+          await refresh();
+        } catch (error) {
+          status.textContent = "Suppression impossible. Vérifie que Ryu est actif.";
+          status.className = "hint policyHint dangerText";
+        }
       }
 
       function hostsFromConfig(config) {
@@ -491,7 +574,7 @@
         const container = document.getElementById("rules");
         container.innerHTML = "";
         if (!rules.length) {
-          container.innerHTML = "<p class='empty'>Aucune politique chargée depuis le contrôleur.</p>";
+          container.innerHTML = "<p class='empty'>Aucune règle définie. Ajoute une politique pour montrer le contrôle centralisé du SDN.</p>";
           return;
         }
         for (const rule of rules) {
@@ -500,14 +583,18 @@
           row.className = "ruleItem";
           row.innerHTML = `
             <div>
-              <strong>${rule.description || rule.id}</strong>
-              <span>${rule.src_ip || "*"} → ${rule.dst_ip || "*"} · ${rule.proto || "any"} · ${rule.action || "deny"}</span>
+              <strong>${html(rule.description || rule.id)}</strong>
+              <span>${html(rule.src_ip || "*")} → ${html(rule.dst_ip || "*")} · ${html(rule.proto || "any")} · ${html(rule.action || "deny")} · ${enabled ? "active" : "inactive"}</span>
             </div>
-            <button class="${enabled ? "danger" : "secondary"}" data-id="${rule.id}">
-              ${enabled ? "Désactiver" : "Activer"}
-            </button>
+            <div class="ruleActions">
+              <button class="${enabled ? "danger" : "secondary"}" data-action="toggle" data-id="${html(rule.id)}">
+                ${enabled ? "Désactiver" : "Activer"}
+              </button>
+              <button class="ghostBtn" data-action="delete" data-id="${html(rule.id)}">Supprimer</button>
+            </div>
           `;
-          row.querySelector("button").addEventListener("click", () => toggleRule(rule.id));
+          row.querySelector("[data-action='toggle']").addEventListener("click", () => toggleRule(rule.id));
+          row.querySelector("[data-action='delete']").addEventListener("click", () => deleteRule(rule.id));
           container.appendChild(row);
         }
       }
@@ -884,6 +971,7 @@
       document.querySelectorAll(".commandBtn").forEach((button) => {
         button.addEventListener("click", () => runMininetCommand(button.dataset.command));
       });
+      document.getElementById("ruleForm").addEventListener("submit", createRule);
       document.getElementById("runCommandBtn").addEventListener("click", () => runMininetCommand());
       document.getElementById("saveTopologyBtn").addEventListener("click", saveTopologyConfig);
       document.getElementById("commandInput").addEventListener("keydown", (event) => {

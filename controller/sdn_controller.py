@@ -14,6 +14,7 @@ Fonctions principales :
 
 import json
 import os
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -184,6 +185,42 @@ def save_rules(rules):
         json.dump(rules, handle, indent=2)
 
 
+def validate_rule_payload(data, existing_rule=None):
+    """
+    Valide et normalise une regle saisie depuis le dashboard.
+    """
+
+    rule = dict(existing_rule or {})
+    rule["id"] = rule.get("id") or f"rule_{int(time.time() * 1000)}"
+    rule["description"] = str(data.get("description") or rule.get("description") or "Regle SDN").strip()[:80]
+    rule["src_ip"] = str(data.get("src_ip") or "").strip()
+    rule["dst_ip"] = str(data.get("dst_ip") or "").strip()
+    rule["proto"] = str(data.get("proto") or rule.get("proto") or "any").strip().lower()
+    rule["action"] = str(data.get("action") or rule.get("action") or "deny").strip().lower()
+    rule["enabled"] = bool(data.get("enabled", rule.get("enabled", True)))
+
+    ip_pattern = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
+    for field in ("src_ip", "dst_ip"):
+        value = rule[field]
+        if value and not ip_pattern.match(value):
+            raise ValueError(f"{field} invalide")
+        if value:
+            octets = [int(part) for part in value.split(".")]
+            if any(octet < 0 or octet > 255 for octet in octets):
+                raise ValueError(f"{field} invalide")
+
+    if not rule["src_ip"] and not rule["dst_ip"]:
+        raise ValueError("Definis au moins une IP source ou destination.")
+
+    if rule["proto"] not in {"any", "icmp", "tcp", "udp"}:
+        raise ValueError("Protocole invalide.")
+
+    if rule["action"] != "deny":
+        raise ValueError("Seules les regles deny sont supportees pour le moment.")
+
+    return rule
+
+
 def ip_proto_name(proto):
     """
     Convertit un numéro de protocole IP en texte.
@@ -277,7 +314,9 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
     Routes :
     - GET  /api/state
     - GET  /api/rules
+    - POST /api/rules/create
     - POST /api/rules/toggle
+    - POST /api/rules/delete
     """
 
     def _send_json(self, payload, status=200):
@@ -378,6 +417,77 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
                 CONTROLLER_APP.install_policy_rules()
 
             self._send_json({"ok": True, "rules": rules})
+            return
+
+        if path == "/api/rules/create":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length).decode("utf-8")
+
+            try:
+                data = json.loads(raw_body or "{}")
+                new_rule = validate_rule_payload(data)
+
+            except json.JSONDecodeError:
+                self._send_json({"error": "invalid json"}, 400)
+                return
+
+            except ValueError as error:
+                self._send_json({"error": str(error)}, 400)
+                return
+
+            rules = load_rules()
+            rules.append(new_rule)
+            save_rules(rules)
+
+            with STATE_LOCK:
+                STATE["rules"] = rules
+
+            add_event(
+                f"Nouvelle politique : {new_rule['description']} ({host_label(new_rule.get('src_ip'))} -> {host_label(new_rule.get('dst_ip'))})",
+                "policy_create",
+                {"rule_id": new_rule["id"]},
+            )
+
+            if CONTROLLER_APP:
+                CONTROLLER_APP.install_policy_rules()
+
+            self._send_json({"ok": True, "rules": rules, "rule": new_rule})
+            return
+
+        if path == "/api/rules/delete":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length).decode("utf-8")
+
+            try:
+                data = json.loads(raw_body or "{}")
+
+            except json.JSONDecodeError:
+                self._send_json({"error": "invalid json"}, 400)
+                return
+
+            rule_id = data.get("id")
+            rules = load_rules()
+            updated_rules = [rule for rule in rules if rule.get("id") != rule_id]
+
+            if len(updated_rules) == len(rules):
+                self._send_json({"error": "rule not found"}, 404)
+                return
+
+            save_rules(updated_rules)
+
+            with STATE_LOCK:
+                STATE["rules"] = updated_rules
+
+            add_event(
+                f"Politique supprimee : {rule_id}",
+                "policy_delete",
+                {"rule_id": rule_id},
+            )
+
+            if CONTROLLER_APP:
+                CONTROLLER_APP.install_policy_rules()
+
+            self._send_json({"ok": True, "rules": updated_rules})
             return
 
         self._send_json({"error": "not found"}, 404)

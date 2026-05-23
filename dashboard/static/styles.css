@@ -51,6 +51,12 @@ button.primaryBtn {
   background: var(--control);
 }
 
+button.ghostBtn {
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line);
+}
+
 .shellHeader {
   display: flex;
   justify-content: space-between;
@@ -648,6 +654,50 @@ button.primaryBtn {
   align-items: center;
 }
 
+.ruleForm {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(130px, 1fr) minmax(130px, 1fr) 110px auto;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ruleForm label {
+  display: grid;
+  gap: 6px;
+}
+
+.ruleForm label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ruleForm input,
+.ruleForm select {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #ffffff;
+}
+
+.ruleForm button {
+  align-self: end;
+}
+
+.policyHint {
+  padding: 0 16px 10px;
+}
+
+.ruleActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .hostItem {
   grid-template-columns: 42px 1fr;
   align-items: center;
@@ -766,8 +816,17 @@ td:nth-child(8) {
   .metricRow,
   .protocolRow,
   .topFlowItem,
+  .ruleForm,
   .configGrid {
     grid-template-columns: 1fr;
+  }
+
+  .ruleActions {
+    justify-content: stretch;
+  }
+
+  .ruleActions button {
+    flex: 1;
   }
 
   .panelTitle {
@@ -818,6 +877,7 @@ button:hover,
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 .topologyToolBtn:focus-visible {
   outline: 3px solid rgba(37, 94, 199, 0.22);
   outline-offset: 2px;

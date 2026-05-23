@@ -102,6 +102,32 @@ def toggle_rule():
         return jsonify({"ok": False, "error": str(error)}), 503
 
 
+@app.route("/api/rules/create", methods=["POST"])
+def create_rule():
+    try:
+        response = requests.post(
+            f"{CONTROLLER_API}/api/rules/create",
+            json=request.get_json(force=True),
+            timeout=3,
+        )
+        return jsonify(response.json()), response.status_code
+    except requests.RequestException as error:
+        return jsonify({"ok": False, "error": str(error)}), 503
+
+
+@app.route("/api/rules/delete", methods=["POST"])
+def delete_rule():
+    try:
+        response = requests.post(
+            f"{CONTROLLER_API}/api/rules/delete",
+            json=request.get_json(force=True),
+            timeout=3,
+        )
+        return jsonify(response.json()), response.status_code
+    except requests.RequestException as error:
+        return jsonify({"ok": False, "error": str(error)}), 503
+
+
 @app.route("/api/topology-config")
 def topology_config():
     try:

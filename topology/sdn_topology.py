@@ -104,14 +104,18 @@ def make_command_handler(net, hosts, switches):
     class MininetCommandHandler(BaseHTTPRequestHandler):
         def _json(self, payload, status=200):
             body = json.dumps(payload).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                return False
+            return True
 
         def do_OPTIONS(self):
             self._json({"ok": True})
@@ -161,9 +165,13 @@ def make_command_handler(net, hosts, switches):
 
             try:
                 output = execute_mininet_command(command, net, hosts, switches)
-                self._json({"ok": True, "command": command, "output": output})
+                response = {"ok": True, "command": command, "output": output}
+                status = 200
             except Exception as error:
-                self._json({"ok": False, "command": command, "error": str(error)}, 500)
+                response = {"ok": False, "command": command, "error": str(error)}
+                status = 500
+
+            self._json(response, status)
 
         def log_message(self, fmt, *args):
             return
