@@ -136,6 +136,14 @@ sudo ./scripts/run_topology.sh
 
 La topologie ouvre aussi une API locale sur le port `8090`. Cette API permet au dashboard d'exécuter des commandes Mininet dans la topologie active.
 
+Important : le script de topologie ne lance plus `mn -c` automatiquement, car `mn -c` peut arrêter `ryu-manager`. Si un nettoyage complet est nécessaire, utilise :
+
+```bash
+sudo CLEAN_MININET=1 ./scripts/run_topology.sh
+```
+
+Après un nettoyage complet, relance le contrôleur Ryu si celui-ci a été arrêté.
+
 Terminal 3 : dashboard
 
 ```bash

@@ -221,11 +221,16 @@ class ReusableThreadingHTTPServer(ThreadingHTTPServer):
 
 def start_mininet_api(net, hosts, switches):
     handler = make_command_handler(net, hosts, switches)
-    server = ReusableThreadingHTTPServer(("0.0.0.0", MININET_API_PORT), handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    info(f"*** API Mininet disponible sur le port {MININET_API_PORT}\n")
-    return server
+    try:
+        server = ReusableThreadingHTTPServer(("0.0.0.0", MININET_API_PORT), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        info(f"*** API Mininet disponible sur le port {MININET_API_PORT}\n")
+        return server
+    except OSError as error:
+        info(f"*** ATTENTION : API Mininet indisponible sur le port {MININET_API_PORT} ({error})\n")
+        info("*** La topologie continue, mais la console du dashboard ne pourra pas exécuter de commandes.\n")
+        return None
 
 
 def build_topology():

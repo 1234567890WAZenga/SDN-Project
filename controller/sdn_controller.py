@@ -222,6 +222,10 @@ def build_summary(flows, previous_history=None):
     total_packets = 0
     total_bytes = 0
 
+    expected_switches = int(TOPOLOGY_CONFIG.get("topology", {}).get("switches", 0))
+    for switch_id in range(1, expected_switches + 1):
+        by_switch[f"S{switch_id}"] = {"flows": 0, "packets": 0, "bytes": 0}
+
     for flow in flows:
         switch_key = f"S{flow.get('switch')}"
         proto_key = flow.get("proto") or "any"
