@@ -6,6 +6,7 @@ from flask import Flask, jsonify, render_template, request
 
 
 CONTROLLER_API = os.environ.get("CONTROLLER_API", "http://127.0.0.1:8080")
+MININET_API = os.environ.get("MININET_API", "http://127.0.0.1:8090")
 
 app = Flask(__name__)
 
@@ -35,6 +36,28 @@ def toggle_rule():
         timeout=3,
     )
     return jsonify(response.json()), response.status_code
+
+
+@app.route("/api/mininet/status")
+def mininet_status():
+    try:
+        response = requests.get(f"{MININET_API}/api/status", timeout=2)
+        return jsonify(response.json()), response.status_code
+    except requests.RequestException as error:
+        return jsonify({"ok": False, "error": str(error)}), 503
+
+
+@app.route("/api/mininet/command", methods=["POST"])
+def mininet_command():
+    try:
+        response = requests.post(
+            f"{MININET_API}/api/command",
+            json=request.get_json(force=True),
+            timeout=30,
+        )
+        return jsonify(response.json()), response.status_code
+    except requests.RequestException as error:
+        return jsonify({"ok": False, "error": str(error)}), 503
 
 
 if __name__ == "__main__":

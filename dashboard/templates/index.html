@@ -113,15 +113,57 @@
         </article>
       </section>
 
-      <section class="panel">
-        <div class="panelTitle">
+      <section class="panel topologyPanel">
+        <div class="panelTitle topologyTitle">
           <div>
             <span class="sectionLabel">Topologie active</span>
             <h2>Vue réseau SDN</h2>
           </div>
-          <span class="hint">Les hôtes deviennent actifs après trafic Mininet.</span>
+          <div class="topologyActions" aria-label="Contrôles de la vue topologie">
+            <button type="button" class="topologyToolBtn" id="topologyZoomOut" title="Réduire la vue">−</button>
+            <span id="topologyZoomValue" class="zoomValue">100%</span>
+            <button type="button" class="topologyToolBtn" id="topologyZoomIn" title="Agrandir la vue">+</button>
+            <button type="button" class="topologyToolBtn reset" id="topologyZoomReset" title="Réinitialiser la vue">Reset</button>
+          </div>
         </div>
-        <div class="topologyCanvas" id="topologyCanvas"></div>
+        <div class="topologyLegend">
+          <span><i class="legendDot controller"></i>Contrôleur</span>
+          <span><i class="legendDot switch"></i>Switch actif</span>
+          <span><i class="legendDot host"></i>Hôte détecté</span>
+          <span><i class="legendDot pending"></i>Attendu</span>
+        </div>
+        <div class="topologyViewport" aria-label="Carte de la topologie réseau SDN">
+          <div class="topologyCanvas" id="topologyCanvas"></div>
+        </div>
+      </section>
+
+      <section class="panel commandPanel">
+        <div class="panelTitle">
+          <div>
+            <span class="sectionLabel">Console Mininet</span>
+            <h2>Contrôle direct de la topologie</h2>
+          </div>
+          <span class="hint" id="mininetStatus">Connexion à Mininet...</span>
+        </div>
+        <div class="commandBody">
+          <div class="quickCommands">
+            <button class="commandBtn" data-command="pingall">pingall</button>
+            <button class="commandBtn" data-command="nodes">nodes</button>
+            <button class="commandBtn" data-command="net">net</button>
+            <button class="commandBtn" data-command="links">links</button>
+            <button class="commandBtn" data-command="dump">dump</button>
+            <button class="commandBtn" data-command="h1 ping -c 4 h2">H1 → H2</button>
+            <button class="commandBtn" data-command="h1 ping -c 4 h6">H1 → H6</button>
+            <button class="commandBtn" data-command="h1 curl http://10.0.0.100">H1 → Web</button>
+            <button class="commandBtn" data-command="h2 curl http://10.0.0.100">H2 → Web</button>
+            <button class="commandBtn" data-command="sh ovs-ofctl dump-flows s1 -O OpenFlow13">Flows S1</button>
+          </div>
+          <div class="commandInputRow">
+            <input id="commandInput" type="text" value="pingall" spellcheck="false" autocomplete="off">
+            <button id="runCommandBtn" class="primaryBtn">Exécuter</button>
+          </div>
+          <pre id="commandOutput" class="commandOutput">La sortie des commandes Mininet apparaîtra ici.</pre>
+        </div>
       </section>
 
       <section class="split charts">
@@ -239,6 +281,8 @@
         {ip: "10.0.0.4", name: "H4", switch: "2"}
       ];
 
+      let topologyZoom = 1;
+
       async function fetchJson(url, options) {
         const response = await fetch(url, options);
         if (!response.ok) throw new Error("HTTP " + response.status);
@@ -279,6 +323,40 @@
           body: JSON.stringify({id})
         });
         await refresh();
+      }
+
+      async function runMininetCommand(command) {
+        const output = document.getElementById("commandOutput");
+        const input = document.getElementById("commandInput");
+        const value = (command || input.value || "").trim();
+        if (!value) return;
+        input.value = value;
+        output.textContent = "$ " + value + "\n\nExécution...";
+        try {
+          const result = await fetchJson("/api/mininet/command", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({command: value})
+          });
+          output.textContent = "$ " + value + "\n\n" + (result.output || result.error || "(aucune sortie)");
+          await refresh();
+        } catch (error) {
+          output.textContent = "$ " + value + "\n\nImpossible d'exécuter la commande. Vérifie que la topologie Mininet est lancée.";
+        }
+      }
+
+      async function refreshMininetStatus() {
+        const status = document.getElementById("mininetStatus");
+        try {
+          const result = await fetchJson("/api/mininet/status");
+          const hostCount = Object.keys(result.hosts || {}).length;
+          const switchCount = (result.switches || []).length;
+          status.textContent = `Mininet actif · ${switchCount} switches · ${hostCount} hôtes`;
+          status.className = "hint okText";
+        } catch (error) {
+          status.textContent = "Mininet indisponible · lance sudo ./scripts/run_topology.sh";
+          status.className = "hint dangerText";
+        }
       }
 
       function renderRules(rules) {
@@ -444,11 +522,24 @@
         }
       }
 
+      function applyTopologyZoom() {
+        const canvas = document.getElementById("topologyCanvas");
+        const value = document.getElementById("topologyZoomValue");
+        if (canvas) canvas.style.transform = `scale(${topologyZoom})`;
+        if (value) value.textContent = Math.round(topologyZoom * 100) + "%";
+      }
+
+      function setTopologyZoom(value) {
+        topologyZoom = Math.min(1.25, Math.max(0.75, Number(value || 1)));
+        applyTopologyZoom();
+      }
+
       function renderTopology(state) {
         const canvas = document.getElementById("topologyCanvas");
-        const switches = Object.keys(state.switches || {}).sort();
+        const switches = Object.keys(state.switches || {}).sort((a, b) => Number(a) - Number(b));
         const hosts = state.hosts || {};
         const topology = state.topology || {};
+
         if (Array.isArray(topology.expected_hosts) && topology.expected_hosts.length) {
           expectedHosts = topology.expected_hosts.map((host) => ({
             ip: host.ip,
@@ -457,36 +548,123 @@
             role: host.service === "http" || host.service === "server" ? "server" : "client"
           }));
         }
+
         canvas.innerHTML = "";
+
+        const expectedSwitchCount = Number(topology.switches || 2);
+        const expectedSwitches = Array.from({length: expectedSwitchCount}, (_, index) => String(index + 1));
+        const activeSwitches = switches.length
+          ? Array.from(new Set([...expectedSwitches, ...switches])).sort((a, b) => Number(a) - Number(b))
+          : expectedSwitches;
+
+        const knownExpectedIps = new Set(expectedHosts.map((host) => host.ip));
+        const normalizedHosts = expectedHosts.map((host) => ({
+          ...host,
+          detected: Boolean(hosts[host.ip]),
+          dynamic: false,
+          port: hosts[host.ip] ? hosts[host.ip].port : null,
+          mac: hosts[host.ip] ? hosts[host.ip].mac : null
+        }));
+
+        for (const [ip, host] of Object.entries(hosts)) {
+          if (!knownExpectedIps.has(ip)) {
+            normalizedHosts.push({
+              ip,
+              name: host.name || hostName(ip, hosts),
+              switch: String(host.switch || "?"),
+              role: "client",
+              detected: true,
+              dynamic: true,
+              port: host.port,
+              mac: host.mac
+            });
+          }
+        }
+
+        const hostsBySwitch = {};
+        for (const sw of activeSwitches) hostsBySwitch[sw] = [];
+        for (const host of normalizedHosts) {
+          const key = String(host.switch || "?");
+          if (!hostsBySwitch[key]) hostsBySwitch[key] = [];
+          hostsBySwitch[key].push(host);
+        }
+
+        const map = document.createElement("div");
+        map.className = "topologyMap";
 
         const controller = document.createElement("div");
         controller.className = "topoNode controllerNode";
-        controller.innerHTML = "<strong>Ryu</strong><span>Contrôleur</span>";
-        canvas.appendChild(controller);
+        controller.innerHTML = `
+          <span class="nodeType">Plan de contrôle</span>
+          <strong>Ryu</strong>
+          <span>Contrôleur OpenFlow</span>
+        `;
+        map.appendChild(controller);
 
-        const switchRow = document.createElement("div");
-        switchRow.className = "topoSwitchRow";
-        const expectedSwitchCount = Number(topology.switches || 2);
-        const expectedSwitches = Array.from({length: expectedSwitchCount}, (_, index) => String(index + 1));
-        const activeSwitches = switches.length ? Array.from(new Set([...expectedSwitches, ...switches])).sort((a, b) => Number(a) - Number(b)) : expectedSwitches;
+        const linkFan = document.createElement("div");
+        linkFan.className = "topoLinkFan";
         for (const sw of activeSwitches) {
+          const link = document.createElement("span");
+          link.className = switches.includes(sw) ? "online" : "";
+          linkFan.appendChild(link);
+        }
+        map.appendChild(linkFan);
+
+        const switchGrid = document.createElement("div");
+        switchGrid.className = "topoSwitchGrid";
+
+        for (const sw of activeSwitches) {
+          const group = document.createElement("div");
+          group.className = "switchGroup" + (switches.includes(sw) ? " active" : "");
+
           const node = document.createElement("div");
           node.className = "topoNode switchNode" + (switches.includes(sw) ? " active" : "");
-          node.innerHTML = `<strong>S${sw}</strong><span>${switches.includes(sw) ? "connecté" : "attendu"}</span>`;
-          switchRow.appendChild(node);
-        }
-        canvas.appendChild(switchRow);
+          node.innerHTML = `
+            <span class="nodeType">Switch</span>
+            <strong>S${sw}</strong>
+            <span>${switches.includes(sw) ? "connecté" : "attendu"}</span>
+          `;
+          group.appendChild(node);
 
-        const hostRow = document.createElement("div");
-        hostRow.className = "topoHostRow";
-        for (const expected of expectedHosts) {
-          const detected = Boolean(hosts[expected.ip]);
-          const node = document.createElement("div");
-          node.className = "topoNode hostNode" + (detected ? " active" : "") + (expected.role === "server" ? " server" : "");
-          node.innerHTML = `<strong>${expected.name}</strong><span>${expected.ip}</span><small>S${expected.switch}</small>`;
-          hostRow.appendChild(node);
+          const hostStack = document.createElement("div");
+          hostStack.className = "switchHosts";
+
+          const switchHosts = (hostsBySwitch[sw] || []).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+          if (!switchHosts.length) {
+            const empty = document.createElement("div");
+            empty.className = "hostPlaceholder";
+            empty.textContent = "Aucun hôte associé";
+            hostStack.appendChild(empty);
+          }
+
+          for (const expected of switchHosts) {
+            const node = document.createElement("div");
+            node.className = "topoNode hostNode"
+              + (expected.detected ? " active" : "")
+              + (expected.role === "server" ? " server" : "")
+              + (expected.dynamic ? " dynamic" : "");
+
+            const status = expected.detected ? "actif" : "attendu";
+            const meta = expected.detected && expected.port
+              ? `S${expected.switch}, port ${expected.port}`
+              : `S${expected.switch}`;
+
+            node.innerHTML = `
+              <span class="nodeType">${expected.role === "server" ? "Service" : "Hôte"}</span>
+              <strong>${expected.name}</strong>
+              <span>${expected.ip}</span>
+              <small>${status} · ${meta}</small>
+            `;
+            hostStack.appendChild(node);
+          }
+
+          group.appendChild(hostStack);
+          switchGrid.appendChild(group);
         }
-        canvas.appendChild(hostRow);
+
+        map.appendChild(switchGrid);
+        canvas.appendChild(map);
+        applyTopologyZoom();
       }
 
       function renderTrafficChart(summary) {
@@ -522,6 +700,7 @@
 
       async function refresh() {
         try {
+          await refreshMininetStatus();
           const state = await fetchJson("/api/state");
           const summary = state.summary || {};
           document.getElementById("apiStatus").textContent = "Contrôleur Ryu connecté";
@@ -544,6 +723,7 @@
           renderTrafficChart(summary);
           updateProof(state);
         } catch (error) {
+          await refreshMininetStatus();
           document.getElementById("apiStatus").textContent = "Contrôleur indisponible";
           document.getElementById("apiStatusDot").className = "statusDot bad";
           document.getElementById("uptime").textContent = "Vérifie Ryu sur le port 8080";
@@ -559,6 +739,18 @@
           updateProof({switches: {}, flows: [], events: [], summary: {}});
         }
       }
+
+      document.querySelectorAll(".commandBtn").forEach((button) => {
+        button.addEventListener("click", () => runMininetCommand(button.dataset.command));
+      });
+      document.getElementById("runCommandBtn").addEventListener("click", () => runMininetCommand());
+      document.getElementById("commandInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") runMininetCommand();
+      });
+
+      document.getElementById("topologyZoomOut").addEventListener("click", () => setTopologyZoom(topologyZoom - 0.1));
+      document.getElementById("topologyZoomIn").addEventListener("click", () => setTopologyZoom(topologyZoom + 0.1));
+      document.getElementById("topologyZoomReset").addEventListener("click", () => setTopologyZoom(1));
 
       refresh();
       setInterval(refresh, 3000);

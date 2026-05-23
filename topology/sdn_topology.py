@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
+import contextlib
+import io
 import json
+import shlex
+import subprocess
+import threading
 from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from mininet.cli import CLI
 from mininet.link import TCLink
@@ -11,6 +17,7 @@ from mininet.node import OVSSwitch, RemoteController
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 CONFIG_FILE = BASE_DIR / "topology_config.json"
+MININET_API_PORT = 8090
 
 
 def load_config():
@@ -59,6 +66,168 @@ def generate_hosts(config):
     return hosts
 
 
+def node_ip(node):
+    ip_address = node.IP()
+    return ip_address.split("/")[0] if ip_address else ""
+
+
+def translate_host_names(command, hosts):
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return command
+
+    translated = []
+    for token in tokens:
+        if token in hosts:
+            translated.append(node_ip(hosts[token]))
+        else:
+            translated.append(token)
+
+    return shlex.join(translated)
+
+
+def make_command_handler(net, hosts, switches):
+    class MininetCommandHandler(BaseHTTPRequestHandler):
+        def _json(self, payload, status=200):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            self._json({"ok": True})
+
+        def do_GET(self):
+            if self.path != "/api/status":
+                self._json({"error": "not found"}, 404)
+                return
+
+            self._json(
+                {
+                    "ok": True,
+                    "switches": sorted(switches.keys()),
+                    "hosts": {
+                        name: {"ip": node_ip(host), "mac": host.MAC()}
+                        for name, host in sorted(hosts.items())
+                    },
+                    "commands": [
+                        "pingall",
+                        "nodes",
+                        "net",
+                        "links",
+                        "dump",
+                        "h1 ping -c 4 h2",
+                        "h1 curl http://10.0.0.100",
+                        "sh ovs-ofctl dump-flows s1 -O OpenFlow13",
+                    ],
+                }
+            )
+
+        def do_POST(self):
+            if self.path != "/api/command":
+                self._json({"error": "not found"}, 404)
+                return
+
+            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._json({"error": "invalid json"}, 400)
+                return
+
+            command = str(payload.get("command", "")).strip()
+            if not command:
+                self._json({"error": "empty command"}, 400)
+                return
+
+            try:
+                output = execute_mininet_command(command, net, hosts, switches)
+                self._json({"ok": True, "command": command, "output": output})
+            except Exception as error:
+                self._json({"ok": False, "command": command, "error": str(error)}, 500)
+
+        def log_message(self, fmt, *args):
+            return
+
+    return MininetCommandHandler
+
+
+def execute_mininet_command(command, net, hosts, switches):
+    if command == "pingall":
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            loss = net.pingAll()
+        output = buffer.getvalue()
+        return output + f"\nPacket loss: {loss}%"
+
+    if command == "nodes":
+        return " ".join(sorted(net.nameToNode.keys()))
+
+    if command == "net":
+        return "\n".join(str(link) for link in net.links)
+
+    if command == "links":
+        return "\n".join(f"{link}: {link.status()}" for link in net.links)
+
+    if command == "dump":
+        lines = []
+        for node in net.hosts + net.switches + net.controllers:
+            lines.append(f"{node.name}: IP={node.IP()} MAC={node.MAC() if hasattr(node, 'MAC') else '-'}")
+        return "\n".join(lines)
+
+    parts = command.split(maxsplit=1)
+    first = parts[0]
+    rest = parts[1] if len(parts) > 1 else ""
+
+    if first in hosts:
+        if not rest:
+            return f"{first}: no host command provided"
+        translated = translate_host_names(rest, hosts)
+        process = hosts[first].popen(translated, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            output, _ = process.communicate(timeout=25)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            output, _ = process.communicate()
+            output += "\nCommand timeout after 25 seconds."
+        return output.strip() or "(no output)"
+
+    if first == "sh":
+        if not rest:
+            return "No shell command provided."
+        process = subprocess.run(rest, shell=True, capture_output=True, text=True, timeout=25)
+        output = (process.stdout or "") + (process.stderr or "")
+        return output.strip() or f"(exit code {process.returncode})"
+
+    if first.startswith("s") and first[1:].isdigit() and first in {f"s{key}" for key in switches}:
+        return f"{first} is a switch. Use: sh ovs-ofctl dump-flows {first} -O OpenFlow13"
+
+    return (
+        "Commande non prise en charge par l'API Mininet.\n"
+        "Utilise pingall, nodes, net, links, dump, une commande hôte comme 'h1 ping -c 4 h2', "
+        "ou une commande shell préfixée par 'sh'."
+    )
+
+
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
+def start_mininet_api(net, hosts, switches):
+    handler = make_command_handler(net, hosts, switches)
+    server = ReusableThreadingHTTPServer(("0.0.0.0", MININET_API_PORT), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    info(f"*** API Mininet disponible sur le port {MININET_API_PORT}\n")
+    return server
+
+
 def build_topology():
     config = load_config()
     controller = config["controller"]
@@ -68,6 +237,7 @@ def build_topology():
 
     net = Mininet(controller=None, switch=OVSSwitch, link=TCLink, autoSetMacs=True)
     started_servers = []
+    api_server = None
 
     try:
         info("*** Ajout du contrôleur distant Ryu\n")
@@ -110,6 +280,8 @@ def build_topology():
                 host.cmd("cd /tmp && python3 -m http.server 80 >/tmp/mininet-http.log 2>&1 &")
                 started_servers.append(host)
 
+        api_server = start_mininet_api(net, hosts, switches)
+
         info("*** Topologie SDN prête\n")
         info("*** Commandes utiles : pingall, h1 ping -c 4 h2, h1 curl http://10.0.0.100\n")
         info("*** Pour voir OpenFlow : sh ovs-ofctl dump-flows s1 -O OpenFlow13\n")
@@ -118,6 +290,11 @@ def build_topology():
 
     finally:
         info("*** Arrêt des services et nettoyage Mininet\n")
+        try:
+            api_server.shutdown()
+            api_server.server_close()
+        except Exception:
+            pass
         for host in started_servers:
             host.cmd("pkill -f 'python3 -m http.server 80' || true")
         net.stop()

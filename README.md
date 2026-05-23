@@ -134,6 +134,8 @@ Terminal 2 : topologie Mininet
 sudo ./scripts/run_topology.sh
 ```
 
+La topologie ouvre aussi une API locale sur le port `8090`. Cette API permet au dashboard d'exécuter des commandes Mininet dans la topologie active.
+
 Terminal 3 : dashboard
 
 ```bash
@@ -148,7 +150,9 @@ http://IP_DE_LA_VM:3000
 
 ## Vérification du fonctionnement SDN
 
-Dans la console Mininet :
+Depuis le dashboard, utiliser la section **Console Mininet** ou taper les commandes dans la console Mininet.
+
+Commandes utiles :
 
 ```bash
 pingall
@@ -156,6 +160,10 @@ h1 ping -c 4 h2
 h1 ping -c 4 h6
 h1 curl http://10.0.0.100
 h2 curl http://10.0.0.100
+nodes
+net
+links
+dump
 ```
 
 Afficher les règles OpenFlow :
@@ -164,6 +172,12 @@ Afficher les règles OpenFlow :
 sh ovs-ofctl dump-flows s1 -O OpenFlow13
 sh ovs-ofctl dump-flows s2 -O OpenFlow13
 sh ovs-ofctl dump-flows s3 -O OpenFlow13
+```
+
+Depuis le dashboard, les commandes OpenFlow doivent être préfixées par `sh`, par exemple :
+
+```bash
+sh ovs-ofctl dump-flows s1 -O OpenFlow13
 ```
 
 ## Ce que le dashboard doit montrer
@@ -175,6 +189,7 @@ Il doit afficher :
 - contrôleur Ryu connecté;
 - switches Open vSwitch connectés;
 - hôtes détectés;
+- console Mininet interactive;
 - événements `Packet-In`;
 - décisions du contrôleur;
 - règles `Flow-Mod` installées;

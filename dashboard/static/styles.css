@@ -47,6 +47,10 @@ button.secondary {
   background: var(--data);
 }
 
+button.primaryBtn {
+  background: var(--control);
+}
+
 .shellHeader {
   display: flex;
   justify-content: space-between;
@@ -197,6 +201,16 @@ button.secondary {
   font-size: 13px;
 }
 
+.okText {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.dangerText {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .empty {
   padding: 16px;
 }
@@ -340,6 +354,64 @@ button.secondary {
 .topoNode small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.commandBody {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.quickCommands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.commandBtn {
+  min-width: auto;
+  height: 34px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: #eef3f8;
+  border: 1px solid var(--line);
+}
+
+.commandBtn:hover {
+  background: #e2ebf5;
+}
+
+.commandInputRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.commandInputRow input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+}
+
+.commandOutput {
+  min-height: 180px;
+  max-height: 360px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: #dbeafe;
+  background: #111827;
+  border-radius: 8px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .controllerNode {
@@ -624,5 +696,516 @@ td:nth-child(8) {
 
   .panelTitle {
     display: grid;
+  }
+
+  .commandInputRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* --- UI propre + topologie maniable --- */
+:root {
+  --bg: #eef3f8;
+  --panel: #ffffff;
+  --ink: #102033;
+  --muted: #617086;
+  --line: #dce6f1;
+  --soft: #f5f8fc;
+  --control: #255ec7;
+  --data: #0d8a7a;
+  --ok: #0f8a63;
+  --warn: #c47a16;
+  --danger: #bf352d;
+  --radius: 14px;
+  --shadow: 0 12px 32px rgba(20, 36, 58, 0.08);
+  --shadow-soft: 0 6px 18px rgba(20, 36, 58, 0.06);
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(37, 94, 199, 0.08), transparent 28rem),
+    linear-gradient(180deg, #f6f9fd 0%, var(--bg) 52%, #e9f0f7 100%);
+}
+
+button,
+.commandBtn,
+.topologyToolBtn {
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+button:hover,
+.commandBtn:hover,
+.topologyToolBtn:hover {
+  transform: translateY(-1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+.topologyToolBtn:focus-visible {
+  outline: 3px solid rgba(37, 94, 199, 0.22);
+  outline-offset: 2px;
+}
+
+.shellHeader {
+  background:
+    linear-gradient(135deg, #ffffff 0%, #f8fbff 64%, #eff6ff 100%);
+  border-bottom: 1px solid rgba(220, 230, 241, 0.9);
+}
+
+.shellHeader h1 {
+  letter-spacing: -0.02em;
+}
+
+.controllerCard,
+.kpi,
+.panel {
+  border-color: rgba(220, 230, 241, 0.96);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+}
+
+.controllerCard {
+  background: rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(8px);
+}
+
+.kpi {
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--control), var(--data));
+  opacity: 0.9;
+}
+
+.kpi strong {
+  color: #0f2743;
+  letter-spacing: -0.03em;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.panelTitle {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.sectionLabel {
+  letter-spacing: 0.04em;
+}
+
+.primaryBtn,
+button.primaryBtn {
+  background: linear-gradient(135deg, var(--control), #174aa8);
+  box-shadow: 0 8px 18px rgba(37, 94, 199, 0.18);
+}
+
+button.secondary {
+  background: linear-gradient(135deg, var(--data), #087467);
+}
+
+button.danger {
+  background: linear-gradient(135deg, var(--danger), #9f2b25);
+}
+
+.commandBtn {
+  border-radius: 999px;
+}
+
+.commandInputRow input {
+  border-radius: 10px;
+}
+
+.commandOutput {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Topologie */
+.topologyPanel {
+  overflow: hidden;
+}
+
+.topologyTitle {
+  align-items: center;
+}
+
+.topologyActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.topologyToolBtn {
+  min-width: 34px;
+  width: auto;
+  height: 32px;
+  padding: 0 11px;
+  color: var(--ink);
+  background: #f6f9fd;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.topologyToolBtn:hover {
+  background: #eef4fb;
+  border-color: #c9d8e8;
+}
+
+.topologyToolBtn.reset {
+  min-width: 58px;
+  color: #23405f;
+  font-size: 12px;
+}
+
+.zoomValue {
+  min-width: 48px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.topologyLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 12px 16px;
+  color: var(--muted);
+  background: #fbfdff;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.topologyLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legendDot.controller {
+  background: var(--control);
+}
+
+.legendDot.switch {
+  background: var(--data);
+}
+
+.legendDot.host {
+  background: var(--ok);
+}
+
+.legendDot.pending {
+  background: #94a3b8;
+}
+
+.topologyViewport {
+  min-height: 430px;
+  overflow: auto;
+  background:
+    linear-gradient(rgba(37, 94, 199, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 94, 199, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, #f8fbff 0%, #f2f7fb 100%);
+  background-size: 28px 28px, 28px 28px, auto;
+}
+
+.topologyViewport::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.topologyViewport::-webkit-scrollbar-thumb {
+  background: #cbd7e6;
+  border-radius: 999px;
+}
+
+.topologyCanvas {
+  min-width: 840px;
+  min-height: 430px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+  padding: 28px;
+  transform-origin: top center;
+  transition: transform 0.18s ease;
+}
+
+.topologyMap {
+  width: min(1060px, 100%);
+  min-width: 760px;
+  display: grid;
+  align-items: start;
+}
+
+.topoLinkFan {
+  position: relative;
+  height: 72px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0;
+}
+
+.topoLinkFan::before {
+  content: "";
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  width: min(74%, 760px);
+  height: 2px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, rgba(13, 138, 122, 0.42), transparent);
+}
+
+.topoLinkFan span {
+  position: relative;
+}
+
+.topoLinkFan span::before,
+.topoLinkFan span::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgba(100, 116, 139, 0.32);
+}
+
+.topoLinkFan span::before {
+  top: 0;
+  height: 22px;
+}
+
+.topoLinkFan span::after {
+  top: 20px;
+  height: 52px;
+}
+
+.topoLinkFan span.online::before,
+.topoLinkFan span.online::after {
+  background: linear-gradient(180deg, var(--control), var(--data));
+}
+
+.topoSwitchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.switchGroup {
+  position: relative;
+  min-width: 0;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(220, 230, 241, 0.96);
+  border-radius: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.switchGroup.active {
+  border-color: rgba(13, 138, 122, 0.28);
+  background: rgba(250, 253, 252, 0.92);
+}
+
+.switchHosts {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.switchHosts::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 14px;
+  transform: translateX(-50%);
+  background: rgba(100, 116, 139, 0.28);
+}
+
+.topoNode {
+  min-height: 82px;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(15, 31, 53, 0.06);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.topoNode:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 26px rgba(15, 31, 53, 0.1);
+}
+
+.topoNode strong {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.nodeType {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.controllerNode {
+  width: 270px;
+  max-width: 270px;
+  justify-self: center;
+  margin: 0 auto;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2b65d9, #17458f);
+  border-color: rgba(37, 94, 199, 0.55);
+  box-shadow: 0 16px 30px rgba(37, 94, 199, 0.22);
+}
+
+.controllerNode .nodeType,
+.controllerNode span {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.switchNode {
+  border-top: 0;
+  background: #f8fbff;
+  border-color: #d9e4f0;
+}
+
+.switchNode::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: 14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.13);
+}
+
+.switchNode.active {
+  color: #063b35;
+  background: linear-gradient(180deg, #effdf9 0%, #f9fffd 100%);
+  border-color: rgba(13, 138, 122, 0.34);
+}
+
+.switchNode.active::before {
+  background: var(--data);
+  box-shadow: 0 0 0 4px rgba(13, 138, 122, 0.13);
+}
+
+.hostNode {
+  min-height: 78px;
+  background: #ffffff;
+  border-color: #dfe8f2;
+}
+
+.hostNode.active {
+  color: #113d31;
+  background: #f0fdf8;
+  border-color: rgba(15, 138, 99, 0.28);
+}
+
+.hostNode.server {
+  background: #fff8ed;
+  border-color: rgba(196, 122, 22, 0.28);
+}
+
+.hostNode.server.active {
+  background: linear-gradient(180deg, #fff7ed 0%, #fffdf8 100%);
+  border-color: rgba(196, 122, 22, 0.42);
+}
+
+.hostNode.dynamic {
+  border-style: dashed;
+}
+
+.hostNode small {
+  margin-top: 4px;
+}
+
+.hostPlaceholder {
+  padding: 14px;
+  color: var(--muted);
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.badge.allowed,
+.badge.blocked {
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.tableWrap {
+  background: #ffffff;
+}
+
+th {
+  background: #f7fafd;
+}
+
+tr:hover td {
+  background: #fbfdff;
+}
+
+@media (max-width: 900px) {
+  .topologyTitle {
+    display: grid;
+    align-items: start;
+  }
+
+  .topologyActions {
+    justify-content: flex-start;
+  }
+
+  .topologyCanvas {
+    min-width: 720px;
+    padding: 22px;
+  }
+
+  .topologyMap {
+    min-width: 660px;
+  }
+}
+
+@media (max-width: 760px) {
+  .topologyLegend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .topologyCanvas {
+    min-width: 640px;
+  }
+
+  .controllerCard {
+    min-width: 0;
   }
 }
