@@ -1074,13 +1074,55 @@ button.danger {
 .topologyCanvas {
   min-width: 840px;
   min-height: 430px;
-  display: flex;
+  display: grid;
   justify-content: center;
   align-items: flex-start;
-  gap: 0;
+  gap: 14px;
   padding: 28px;
   transform-origin: top center;
   transition: transform 0.18s ease;
+}
+
+.topologyActivity {
+  width: min(1060px, 100%);
+  min-width: 760px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  color: #12345d;
+  background: #eef6ff;
+  border: 1px solid #c9ddf5;
+  border-radius: 10px;
+  box-shadow: 0 10px 20px rgba(15, 31, 53, 0.07);
+}
+
+.topologyActivity span,
+.topologyActivity small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.topologyActivity strong {
+  display: block;
+  margin-top: 3px;
+}
+
+.topologyActivity.running {
+  border-color: rgba(37, 94, 199, 0.35);
+}
+
+.topologyActivity.done {
+  color: #064e3b;
+  background: #ecfdf5;
+  border-color: rgba(7, 132, 95, 0.3);
+}
+
+.topologyActivity.error {
+  color: #7f1d1d;
+  background: #fff1f2;
+  border-color: rgba(180, 35, 24, 0.3);
 }
 
 .topologyMap {
@@ -1138,6 +1180,12 @@ button.danger {
   background: linear-gradient(180deg, var(--control), var(--data));
 }
 
+.topoLinkFan span.commandActive::before,
+.topoLinkFan span.commandActive::after {
+  background: linear-gradient(180deg, #f59e0b, var(--control));
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+}
+
 .topoSwitchGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1193,6 +1241,26 @@ button.danger {
 .topoNode:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 26px rgba(15, 31, 53, 0.1);
+}
+
+.topoNode.commandActive {
+  border-color: rgba(245, 158, 11, 0.72);
+  box-shadow:
+    0 0 0 3px rgba(245, 158, 11, 0.22),
+    0 16px 30px rgba(15, 31, 53, 0.12);
+  animation: commandPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes commandPulse {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
 
 .topoNode strong {

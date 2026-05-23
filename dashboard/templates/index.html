@@ -354,6 +354,16 @@
       let configuredSwitches = 2;
 
       let topologyZoom = 1;
+      let lastTopologyState = {switches: {}, hosts: {}, topology: {}};
+      let topologyActivity = {
+        active: false,
+        command: "",
+        message: "",
+        hosts: [],
+        switches: [],
+        status: "idle",
+        expiresAt: 0
+      };
 
       async function fetchJson(url, options) {
         const response = await fetch(url, options);
@@ -395,6 +405,104 @@
         if (known && known.name) return known.name;
         const expected = expectedHosts.find((host) => host.ip === ip);
         return expected ? expected.name : ip;
+      }
+
+      function normalizeCommandToken(token) {
+        let value = String(token || "").trim();
+        value = value.replace(/^https?:\/\//, "");
+        value = value.split("/")[0].split(":")[0];
+        return value.replace(/[;,)]$/g, "").toLowerCase();
+      }
+
+      function findExpectedHost(token) {
+        const value = normalizeCommandToken(token);
+        if (!value) return null;
+        return expectedHosts.find((host) => {
+          const hostNameValue = String(host.name || "").toLowerCase();
+          const hostIp = String(host.ip || "").toLowerCase();
+          return hostIp === value
+            || hostNameValue === value
+            || hostNameValue.replace(/\s+/g, "") === value
+            || (host.role === "server" && ["web", "web1", "server", "serveur"].includes(value));
+        }) || null;
+      }
+
+      function expandLinearSwitchPath(switches) {
+        const ids = [...switches].map(Number).filter((value) => Number.isFinite(value));
+        if (ids.length < 2) return switches;
+        const start = Math.min(...ids);
+        const end = Math.max(...ids);
+        for (let sw = start; sw <= end; sw++) switches.add(String(sw));
+        return switches;
+      }
+
+      function commandActivityFromText(command) {
+        const tokens = command.split(/\s+/).filter(Boolean);
+        const hosts = new Map();
+        const switches = new Set();
+        const lower = command.toLowerCase();
+
+        if (lower === "pingall") {
+          for (const host of expectedHosts) hosts.set(host.ip, host);
+          for (let sw = 1; sw <= Number(configuredSwitches || 0); sw++) switches.add(String(sw));
+          return {
+            hosts: [...hosts.keys()],
+            switches: [...switches],
+            message: "Test de connectivite global entre tous les hotes"
+          };
+        }
+
+        for (const token of tokens) {
+          const host = findExpectedHost(token);
+          if (host) {
+            hosts.set(host.ip, host);
+            switches.add(String(host.switch));
+          }
+          const switchMatch = normalizeCommandToken(token).match(/^s(\d+)$/);
+          if (switchMatch) switches.add(switchMatch[1]);
+        }
+
+        if (lower.includes("dump-flows")) {
+          return {
+            hosts: [],
+            switches: [...switches],
+            message: "Lecture des regles OpenFlow installees sur le switch"
+          };
+        }
+
+        const hostNames = [...hosts.values()].map((host) => host.name).join(" -> ");
+        expandLinearSwitchPath(switches);
+        return {
+          hosts: [...hosts.keys()],
+          switches: [...switches],
+          message: hostNames ? `Trafic observe : ${hostNames}` : "Commande executee sur la topologie"
+        };
+      }
+
+      function setTopologyActivity(command, status) {
+        const activity = commandActivityFromText(command);
+        topologyActivity = {
+          active: true,
+          command,
+          message: activity.message,
+          hosts: activity.hosts,
+          switches: activity.switches,
+          status,
+          expiresAt: Date.now() + (status === "running" ? 12000 : 6000)
+        };
+        renderTopology(lastTopologyState);
+      }
+
+      function finishTopologyActivity(command, ok) {
+        if (topologyActivity.command !== command) return;
+        topologyActivity = {
+          ...topologyActivity,
+          active: true,
+          status: ok ? "done" : "error",
+          message: ok ? topologyActivity.message + " termine" : "Commande non appliquee sur la topologie",
+          expiresAt: Date.now() + 6000
+        };
+        renderTopology(lastTopologyState);
       }
 
       async function toggleRule(id) {
@@ -543,6 +651,7 @@
         if (!value) return;
         input.value = value;
         output.textContent = "$ " + value + "\n\nExécution...";
+        setTopologyActivity(value, "running");
         try {
           const result = await fetchJson("/api/mininet/command", {
             method: "POST",
@@ -550,9 +659,11 @@
             body: JSON.stringify({command: value})
           });
           output.textContent = "$ " + value + "\n\n" + (result.output || result.error || "(aucune sortie)");
+          finishTopologyActivity(value, Boolean(result.ok));
           await refresh();
         } catch (error) {
           output.textContent = "$ " + value + "\n\nImpossible d'exécuter la commande. Vérifie que la topologie Mininet est lancée.";
+          finishTopologyActivity(value, false);
         }
       }
 
@@ -742,10 +853,15 @@
       }
 
       function renderTopology(state) {
+        state = state || {switches: {}, hosts: {}, topology: {}};
+        lastTopologyState = state;
         const canvas = document.getElementById("topologyCanvas");
         const switches = Object.keys(state.switches || {}).sort((a, b) => Number(a) - Number(b));
         const hosts = state.hosts || {};
         const topology = state.topology || {};
+        const activityVisible = topologyActivity.active && topologyActivity.expiresAt > Date.now();
+        const activeHosts = new Set(activityVisible ? topologyActivity.hosts : []);
+        const activeSwitchIds = new Set(activityVisible ? topologyActivity.switches : []);
 
         if (Array.isArray(topology.expected_hosts) && topology.expected_hosts.length) {
           expectedHosts = topology.expected_hosts.map((host) => ({
@@ -800,8 +916,21 @@
         const map = document.createElement("div");
         map.className = "topologyMap";
 
+        if (activityVisible) {
+          const activity = document.createElement("div");
+          activity.className = "topologyActivity " + topologyActivity.status;
+          activity.innerHTML = `
+            <div>
+              <span>Action topologie</span>
+              <strong>${html(topologyActivity.message)}</strong>
+            </div>
+            <small>${html(topologyActivity.command)}</small>
+          `;
+          canvas.appendChild(activity);
+        }
+
         const controller = document.createElement("div");
-        controller.className = "topoNode controllerNode";
+        controller.className = "topoNode controllerNode" + (activityVisible ? " commandActive" : "");
         controller.innerHTML = `
           <span class="nodeType">Plan de contrôle</span>
           <strong>Ryu</strong>
@@ -813,7 +942,7 @@
         linkFan.className = "topoLinkFan";
         for (const sw of activeSwitches) {
           const link = document.createElement("span");
-          link.className = switches.includes(sw) ? "online" : "";
+          link.className = (switches.includes(sw) ? "online" : "") + (activeSwitchIds.has(sw) ? " commandActive" : "");
           linkFan.appendChild(link);
         }
         map.appendChild(linkFan);
@@ -826,7 +955,9 @@
           group.className = "switchGroup" + (switches.includes(sw) ? " active" : "");
 
           const node = document.createElement("div");
-          node.className = "topoNode switchNode" + (switches.includes(sw) ? " active" : "");
+          node.className = "topoNode switchNode"
+            + (switches.includes(sw) ? " active" : "")
+            + (activeSwitchIds.has(sw) ? " commandActive" : "");
           node.innerHTML = `
             <span class="nodeType">Switch</span>
             <strong>S${sw}</strong>
@@ -850,7 +981,8 @@
             node.className = "topoNode hostNode"
               + (expected.detected ? " active" : "")
               + (expected.role === "server" ? " server" : "")
-              + (expected.dynamic ? " dynamic" : "");
+              + (expected.dynamic ? " dynamic" : "")
+              + (activeHosts.has(expected.ip) ? " commandActive" : "");
 
             const status = expected.detected ? "actif" : "attendu";
             const meta = expected.detected && expected.port
