@@ -3,69 +3,215 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dashboard SDN</title>
+    <title>Console SDN</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
-    <header class="topbar">
+    <header class="shellHeader">
       <div>
-        <h1>Dashboard SDN</h1>
-        <p>Supervision et gestion dynamique des flux OpenFlow</p>
+        <span class="eyebrow">Infrastructure réseau agile basée sur le SDN</span>
+        <h1>Console de supervision SDN</h1>
+        <p>Contrôleur Ryu, switches Open vSwitch, règles OpenFlow et flux réseau en temps réel.</p>
       </div>
-      <div class="status">
-        <span id="apiStatus">Connexion...</span>
+      <div class="controllerCard">
+        <span id="apiStatusDot" class="statusDot pending"></span>
+        <div>
+          <strong id="apiStatus">Connexion au contrôleur...</strong>
+          <span id="uptime">Uptime: --</span>
+        </div>
       </div>
     </header>
 
-    <main class="layout">
-      <section class="metrics">
-        <article>
-          <span>Switches</span>
+    <main class="page">
+      <section class="kpiGrid">
+        <article class="kpi">
+          <span>Switches connectés</span>
           <strong id="switchCount">0</strong>
+          <small>Plan de données</small>
         </article>
-        <article>
-          <span>Hotes detectes</span>
+        <article class="kpi">
+          <span>Hôtes détectés</span>
           <strong id="hostCount">0</strong>
+          <small>Découverte par paquets</small>
         </article>
-        <article>
-          <span>Flux actifs</span>
+        <article class="kpi">
+          <span>Flux OpenFlow</span>
           <strong id="flowCount">0</strong>
+          <small>Règles actives</small>
         </article>
-        <article>
-          <span>Regles</span>
-          <strong id="ruleCount">0</strong>
+        <article class="kpi">
+          <span>Flux bloqués</span>
+          <strong id="blockedCount">0</strong>
+          <small>Politiques dynamiques</small>
+        </article>
+        <article class="kpi">
+          <span>Paquets observés</span>
+          <strong id="packetCount">0</strong>
+          <small>Compteurs OpenFlow</small>
+        </article>
+        <article class="kpi">
+          <span>Volume total</span>
+          <strong id="byteCount">0 B</strong>
+          <small>Octets transférés</small>
+        </article>
+      </section>
+
+      <section class="split">
+        <article class="panel sdnProof">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Preuve de fonctionnement</span>
+              <h2>Cycle SDN observé</h2>
+            </div>
+          </div>
+          <div class="flowSteps">
+            <div class="step" id="stepSwitch">
+              <span>1</span>
+              <strong>Switch connecté</strong>
+              <small>OVS établit la session OpenFlow avec Ryu.</small>
+            </div>
+            <div class="step" id="stepPacket">
+              <span>2</span>
+              <strong>Packet-In</strong>
+              <small>Un paquet inconnu remonte vers le contrôleur.</small>
+            </div>
+            <div class="step" id="stepDecision">
+              <span>3</span>
+              <strong>Décision</strong>
+              <small>Ryu choisit transférer, bloquer ou installer une règle.</small>
+            </div>
+            <div class="step" id="stepFlow">
+              <span>4</span>
+              <strong>Flow-Mod</strong>
+              <small>La règle OpenFlow est appliquée sur le switch.</small>
+            </div>
+          </div>
+          <p class="insight" id="insightText">
+            Lance le contrôleur, la topologie Mininet puis génère du trafic pour voir le cycle SDN.
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Architecture</span>
+              <h2>Contrôle et données</h2>
+            </div>
+          </div>
+          <div class="planes">
+            <div class="plane control">
+              <span>Plan de contrôle</span>
+              <strong>Contrôleur Ryu</strong>
+              <small>Décisions, politiques, Flow-Mod, statistiques.</small>
+            </div>
+            <div class="plane data">
+              <span>Plan de données</span>
+              <strong>Open vSwitch + hôtes Mininet</strong>
+              <small>Transfert des paquets selon les règles OpenFlow.</small>
+            </div>
+          </div>
         </article>
       </section>
 
       <section class="panel">
-        <div class="panelHeader">
-          <h2>Regles de securite</h2>
+        <div class="panelTitle">
+          <div>
+            <span class="sectionLabel">Topologie active</span>
+            <h2>Vue réseau SDN</h2>
+          </div>
+          <span class="hint">Les hôtes deviennent actifs après trafic Mininet.</span>
         </div>
-        <div id="rules"></div>
+        <div class="topologyCanvas" id="topologyCanvas"></div>
+      </section>
+
+      <section class="split charts">
+        <article class="panel">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Supervision</span>
+              <h2>Trafic dans le temps</h2>
+            </div>
+          </div>
+          <div class="lineChart" id="trafficChart"></div>
+          <div class="chartLegend">
+            <span><i class="legendPackets"></i> paquets observés</span>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Distribution</span>
+              <h2>Charge par switch</h2>
+            </div>
+          </div>
+          <div id="switchMetrics" class="switchMetrics"></div>
+        </article>
+      </section>
+
+      <section class="split charts">
+        <article class="panel">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Protocoles</span>
+              <h2>Répartition du trafic</h2>
+            </div>
+          </div>
+          <div id="protocolMetrics" class="protocolMetrics"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Flux dominants</span>
+              <h2>Top communications</h2>
+            </div>
+          </div>
+          <div id="topFlows" class="topFlowList"></div>
+        </article>
+      </section>
+
+      <section class="split">
+        <article class="panel">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Politiques</span>
+              <h2>Règles dynamiques</h2>
+            </div>
+          </div>
+          <div id="rules" class="ruleList"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panelTitle">
+            <div>
+              <span class="sectionLabel">Découverte</span>
+              <h2>Hôtes détectés</h2>
+            </div>
+          </div>
+          <div id="hosts" class="hostList"></div>
+        </article>
       </section>
 
       <section class="panel">
-        <div class="panelHeader">
-          <h2>Metriques par switch</h2>
-        </div>
-        <div id="switchMetrics" class="switchMetrics"></div>
-      </section>
-
-      <section class="panel">
-        <div class="panelHeader">
-          <h2>Flux OpenFlow</h2>
+        <div class="panelTitle">
+          <div>
+            <span class="sectionLabel">OpenFlow</span>
+            <h2>Flux réseau</h2>
+          </div>
         </div>
         <div class="tableWrap">
           <table>
             <thead>
               <tr>
+                <th>Communication</th>
                 <th>Switch</th>
-                <th>Priorite</th>
-                <th>Match</th>
-                <th>Proto</th>
+                <th>Protocole</th>
+                <th>Décision</th>
                 <th>Paquets</th>
                 <th>Octets</th>
-                <th>Duree</th>
+                <th>Durée</th>
+                <th>Match OpenFlow</th>
               </tr>
             </thead>
             <tbody id="flows"></tbody>
@@ -73,33 +219,57 @@
         </div>
       </section>
 
-      <section class="columns">
-        <div class="panel">
-          <div class="panelHeader">
-            <h2>Hotes</h2>
+      <section class="panel">
+        <div class="panelTitle">
+          <div>
+            <span class="sectionLabel">Journal SDN</span>
+            <h2>Événements du contrôleur</h2>
           </div>
-          <div id="hosts"></div>
         </div>
-        <div class="panel">
-          <div class="panelHeader">
-            <h2>Evenements</h2>
-          </div>
-          <div id="events"></div>
-        </div>
+        <div id="events" class="eventTimeline"></div>
       </section>
     </main>
 
     <script>
+      let expectedHosts = [
+        {ip: "10.0.0.1", name: "H1", switch: "1"},
+        {ip: "10.0.0.2", name: "H2", switch: "1"},
+        {ip: "10.0.0.100", name: "Web", switch: "1", role: "server"},
+        {ip: "10.0.0.3", name: "H3", switch: "2"},
+        {ip: "10.0.0.4", name: "H4", switch: "2"}
+      ];
+
       async function fetchJson(url, options) {
         const response = await fetch(url, options);
         if (!response.ok) throw new Error("HTTP " + response.status);
         return response.json();
       }
 
+      function fmtBytes(value) {
+        const bytes = Number(value || 0);
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / 1024 / 1024).toFixed(1) + " MB";
+      }
+
+      function fmtSeconds(seconds) {
+        const value = Number(seconds || 0);
+        if (value < 60) return value + "s";
+        return Math.floor(value / 60) + "m " + String(value % 60).padStart(2, "0") + "s";
+      }
+
       function text(value) {
         if (value === null || value === undefined) return "";
         if (typeof value === "object") return JSON.stringify(value);
         return String(value);
+      }
+
+      function hostName(ip, hosts) {
+        if (!ip) return "*";
+        const known = hosts[ip];
+        if (known && known.name) return known.name;
+        const expected = expectedHosts.find((host) => host.ip === ip);
+        return expected ? expected.name : ip;
       }
 
       async function toggleRule(id) {
@@ -115,19 +285,20 @@
         const container = document.getElementById("rules");
         container.innerHTML = "";
         if (!rules.length) {
-          container.innerHTML = "<p class='muted'>Aucune regle configuree.</p>";
+          container.innerHTML = "<p class='empty'>Aucune politique chargée depuis le contrôleur.</p>";
           return;
         }
         for (const rule of rules) {
+          const enabled = Boolean(rule.enabled);
           const row = document.createElement("div");
-          row.className = "rule";
+          row.className = "ruleItem";
           row.innerHTML = `
             <div>
               <strong>${rule.description || rule.id}</strong>
-              <span>${rule.src_ip || "*"} -> ${rule.dst_ip || "*"} / ${rule.proto || "any"}</span>
+              <span>${rule.src_ip || "*"} → ${rule.dst_ip || "*"} · ${rule.proto || "any"} · ${rule.action || "deny"}</span>
             </div>
-            <button class="${rule.enabled ? "danger" : "secondary"}" data-id="${rule.id}">
-              ${rule.enabled ? "Desactiver" : "Activer"}
+            <button class="${enabled ? "danger" : "secondary"}" data-id="${rule.id}">
+              ${enabled ? "Désactiver" : "Activer"}
             </button>
           `;
           row.querySelector("button").addEventListener("click", () => toggleRule(rule.id));
@@ -138,16 +309,22 @@
       function renderFlows(flows) {
         const tbody = document.getElementById("flows");
         tbody.innerHTML = "";
-        for (const flow of flows.sort((a, b) => b.packets - a.packets)) {
+        if (!flows.length) {
+          tbody.innerHTML = "<tr><td colspan='8' class='emptyCell'>Aucun flux pour le moment. Lance pingall ou un ping entre deux hôtes.</td></tr>";
+          return;
+        }
+        for (const flow of [...flows].sort((a, b) => Number(b.packets || 0) - Number(a.packets || 0))) {
           const tr = document.createElement("tr");
+          const blocked = flow.action === "bloque";
           tr.innerHTML = `
-            <td>s${flow.switch}</td>
-            <td>${flow.priority}</td>
+            <td><strong>${flow.readable || "Flux Ethernet appris"}</strong></td>
+            <td>S${flow.switch}</td>
+            <td>${flow.proto || "any"}</td>
+            <td><span class="badge ${blocked ? "blocked" : "allowed"}">${blocked ? "Bloqué" : "Autorisé"}</span></td>
+            <td>${flow.packets || 0}</td>
+            <td>${fmtBytes(flow.bytes)}</td>
+            <td>${fmtSeconds(flow.duration)}</td>
             <td>${text(flow.match)}</td>
-            <td>${flow.proto}</td>
-            <td>${flow.packets}</td>
-            <td>${flow.bytes}</td>
-            <td>${flow.duration}s</td>
           `;
           tbody.appendChild(tr);
         }
@@ -158,7 +335,7 @@
         container.innerHTML = "";
         const bySwitch = {};
         for (const flow of flows) {
-          const key = "s" + flow.switch;
+          const key = "S" + flow.switch;
           if (!bySwitch[key]) bySwitch[key] = {packets: 0, bytes: 0, flows: 0};
           bySwitch[key].packets += Number(flow.packets || 0);
           bySwitch[key].bytes += Number(flow.bytes || 0);
@@ -166,20 +343,65 @@
         }
         const entries = Object.entries(bySwitch);
         if (!entries.length) {
-          container.innerHTML = "<p class='muted metricEmpty'>Aucune metrique disponible pour le moment.</p>";
+          container.innerHTML = "<p class='empty'>Aucune charge mesurée. Génère du trafic dans Mininet.</p>";
           return;
         }
         const maxPackets = Math.max(...entries.map(([, item]) => item.packets), 1);
         for (const [sw, item] of entries) {
-          const width = Math.max(4, Math.round((item.packets / maxPackets) * 100));
+          const width = Math.max(6, Math.round((item.packets / maxPackets) * 100));
           const row = document.createElement("div");
           row.className = "metricRow";
           row.innerHTML = `
-            <div class="metricLabel">
+            <div class="metricMeta">
               <strong>${sw}</strong>
-              <span>${item.flows} flux - ${item.packets} paquets - ${item.bytes} octets</span>
+              <span>${item.flows} flux · ${item.packets} paquets · ${fmtBytes(item.bytes)}</span>
             </div>
             <div class="barTrack"><div class="barFill" style="width:${width}%"></div></div>
+          `;
+          container.appendChild(row);
+        }
+      }
+
+      function renderProtocolMetrics(summary) {
+        const container = document.getElementById("protocolMetrics");
+        const protocols = Object.entries((summary || {}).by_protocol || {});
+        container.innerHTML = "";
+        if (!protocols.length) {
+          container.innerHTML = "<p class='empty'>Aucun protocole mesuré pour le moment.</p>";
+          return;
+        }
+        const maxPackets = Math.max(...protocols.map(([, item]) => Number(item.packets || 0)), 1);
+        for (const [proto, item] of protocols.sort((a, b) => Number(b[1].packets || 0) - Number(a[1].packets || 0))) {
+          const width = Math.max(6, Math.round((Number(item.packets || 0) / maxPackets) * 100));
+          const row = document.createElement("div");
+          row.className = "protocolRow";
+          row.innerHTML = `
+            <div class="protocolName">${proto.toUpperCase()}</div>
+            <div class="barTrack"><div class="barFill protocolFill" style="width:${width}%"></div></div>
+            <span>${item.flows} flux · ${item.packets} paquets · ${fmtBytes(item.bytes)}</span>
+          `;
+          container.appendChild(row);
+        }
+      }
+
+      function renderTopFlows(summary) {
+        const container = document.getElementById("topFlows");
+        const flows = (summary || {}).top_flows || [];
+        container.innerHTML = "";
+        if (!flows.length) {
+          container.innerHTML = "<p class='empty'>Aucun flux dominant. Génère du trafic dans Mininet.</p>";
+          return;
+        }
+        for (const flow of flows) {
+          const blocked = flow.action === "bloque";
+          const row = document.createElement("div");
+          row.className = "topFlowItem";
+          row.innerHTML = `
+            <div>
+              <strong>${flow.readable || "Flux Ethernet appris"}</strong>
+              <span>S${flow.switch} · ${flow.proto || "any"} · ${fmtBytes(flow.bytes)}</span>
+            </div>
+            <span class="badge ${blocked ? "blocked" : "allowed"}">${flow.packets || 0} pkt</span>
           `;
           container.appendChild(row);
         }
@@ -190,13 +412,19 @@
         container.innerHTML = "";
         const entries = Object.entries(hosts);
         if (!entries.length) {
-          container.innerHTML = "<p class='muted'>Lance un ping pour detecter les hotes.</p>";
+          container.innerHTML = "<p class='empty'>Aucun hôte détecté. Lance pingall dans Mininet.</p>";
           return;
         }
-        for (const [ip, host] of entries) {
+        for (const [ip, host] of entries.sort()) {
           const row = document.createElement("div");
-          row.className = "host";
-          row.innerHTML = `<strong>${ip}</strong><span>${host.mac} - s${host.switch}, port ${host.port}</span>`;
+          row.className = "hostItem";
+          row.innerHTML = `
+            <span class="hostIcon">${(host.name || hostName(ip, hosts)).slice(0, 1)}</span>
+            <div>
+              <strong>${host.name || hostName(ip, hosts)}</strong>
+              <span>${ip} · ${host.mac || "MAC inconnue"} · S${host.switch}, port ${host.port}</span>
+            </div>
+          `;
           container.appendChild(row);
         }
       }
@@ -204,31 +432,131 @@
       function renderEvents(events) {
         const container = document.getElementById("events");
         container.innerHTML = "";
-        for (const event of events.slice(0, 12)) {
+        if (!events.length) {
+          container.innerHTML = "<p class='empty'>Aucun événement reçu du contrôleur.</p>";
+          return;
+        }
+        for (const event of events.slice(0, 14)) {
           const row = document.createElement("div");
-          row.className = "event";
+          row.className = "eventItem";
           row.innerHTML = `<span>${event.time}</span><p>${event.message}</p>`;
           container.appendChild(row);
         }
       }
 
+      function renderTopology(state) {
+        const canvas = document.getElementById("topologyCanvas");
+        const switches = Object.keys(state.switches || {}).sort();
+        const hosts = state.hosts || {};
+        const topology = state.topology || {};
+        if (Array.isArray(topology.expected_hosts) && topology.expected_hosts.length) {
+          expectedHosts = topology.expected_hosts.map((host) => ({
+            ip: host.ip,
+            name: host.label || host.name,
+            switch: String(host.switch),
+            role: host.service === "http" || host.service === "server" ? "server" : "client"
+          }));
+        }
+        canvas.innerHTML = "";
+
+        const controller = document.createElement("div");
+        controller.className = "topoNode controllerNode";
+        controller.innerHTML = "<strong>Ryu</strong><span>Contrôleur</span>";
+        canvas.appendChild(controller);
+
+        const switchRow = document.createElement("div");
+        switchRow.className = "topoSwitchRow";
+        const expectedSwitchCount = Number(topology.switches || 2);
+        const expectedSwitches = Array.from({length: expectedSwitchCount}, (_, index) => String(index + 1));
+        const activeSwitches = switches.length ? Array.from(new Set([...expectedSwitches, ...switches])).sort((a, b) => Number(a) - Number(b)) : expectedSwitches;
+        for (const sw of activeSwitches) {
+          const node = document.createElement("div");
+          node.className = "topoNode switchNode" + (switches.includes(sw) ? " active" : "");
+          node.innerHTML = `<strong>S${sw}</strong><span>${switches.includes(sw) ? "connecté" : "attendu"}</span>`;
+          switchRow.appendChild(node);
+        }
+        canvas.appendChild(switchRow);
+
+        const hostRow = document.createElement("div");
+        hostRow.className = "topoHostRow";
+        for (const expected of expectedHosts) {
+          const detected = Boolean(hosts[expected.ip]);
+          const node = document.createElement("div");
+          node.className = "topoNode hostNode" + (detected ? " active" : "") + (expected.role === "server" ? " server" : "");
+          node.innerHTML = `<strong>${expected.name}</strong><span>${expected.ip}</span><small>S${expected.switch}</small>`;
+          hostRow.appendChild(node);
+        }
+        canvas.appendChild(hostRow);
+      }
+
+      function renderTrafficChart(summary) {
+        const chart = document.getElementById("trafficChart");
+        const history = ((summary || {}).history || []).map((item) => Number(item.packets || 0));
+        const values = history.length ? history : [0];
+        const max = Math.max(...values, 1);
+        chart.innerHTML = "";
+        for (const value of values) {
+          const bar = document.createElement("span");
+          bar.style.height = Math.max(4, Math.round((value / max) * 100)) + "%";
+          chart.appendChild(bar);
+        }
+      }
+
+      function updateProof(state) {
+        const events = state.events || [];
+        const switches = Object.keys(state.switches || {}).length;
+        const flows = state.flows || [];
+        const packets = Number((state.summary || {}).total_packets || 0);
+        document.getElementById("stepSwitch").classList.toggle("done", switches > 0);
+        document.getElementById("stepPacket").classList.toggle("done", events.some((event) => String(event.message).toLowerCase().includes("packet")));
+        document.getElementById("stepDecision").classList.toggle("done", flows.length > 0);
+        document.getElementById("stepFlow").classList.toggle("done", packets > 0 || flows.length > 0);
+
+        const blocked = Number((state.summary || {}).blocked_flows || 0);
+        let text = "Le contrôleur attend les switches OpenFlow.";
+        if (switches > 0) text = `Ryu contrôle ${switches} switch(es). Génère du trafic pour observer les flux.`;
+        if (flows.length > 0) text = `${flows.length} flux OpenFlow sont visibles. Les compteurs prouvent que le plan de données applique les décisions du contrôleur.`;
+        if (blocked > 0) text += ` ${blocked} flux sont actuellement bloqués par une politique SDN.`;
+        document.getElementById("insightText").textContent = text;
+      }
+
       async function refresh() {
         try {
           const state = await fetchJson("/api/state");
-          document.getElementById("apiStatus").textContent = "Controleur connecte";
-          document.getElementById("apiStatus").className = "ok";
+          const summary = state.summary || {};
+          document.getElementById("apiStatus").textContent = "Contrôleur Ryu connecté";
+          document.getElementById("apiStatusDot").className = "statusDot ok";
+          document.getElementById("uptime").textContent = "Uptime: " + fmtSeconds(state.uptime_seconds || 0);
           document.getElementById("switchCount").textContent = Object.keys(state.switches || {}).length;
           document.getElementById("hostCount").textContent = Object.keys(state.hosts || {}).length;
           document.getElementById("flowCount").textContent = (state.flows || []).length;
-          document.getElementById("ruleCount").textContent = (state.rules || []).length;
+          document.getElementById("blockedCount").textContent = summary.blocked_flows || 0;
+          document.getElementById("packetCount").textContent = summary.total_packets || 0;
+          document.getElementById("byteCount").textContent = fmtBytes(summary.total_bytes || 0);
           renderRules(state.rules || []);
           renderSwitchMetrics(state.flows || []);
+          renderProtocolMetrics(summary);
+          renderTopFlows(summary);
           renderFlows(state.flows || []);
           renderHosts(state.hosts || {});
           renderEvents(state.events || []);
+          renderTopology(state);
+          renderTrafficChart(summary);
+          updateProof(state);
         } catch (error) {
-          document.getElementById("apiStatus").textContent = "Controleur indisponible";
-          document.getElementById("apiStatus").className = "bad";
+          document.getElementById("apiStatus").textContent = "Contrôleur indisponible";
+          document.getElementById("apiStatusDot").className = "statusDot bad";
+          document.getElementById("uptime").textContent = "Vérifie Ryu sur le port 8080";
+          renderRules([]);
+          renderSwitchMetrics([]);
+          renderProtocolMetrics({});
+          renderTopFlows({});
+          renderFlows([]);
+          renderHosts({});
+          renderEvents([]);
+          renderTopology({switches: {}, hosts: {}});
+          renderTrafficChart({});
+          updateProof({switches: {}, flows: [], events: [], summary: {}});
         }
       }
 

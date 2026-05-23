@@ -1,127 +1,128 @@
 #!/usr/bin/env python3
+import json
+from pathlib import Path
 
-# Import de l'interface CLI Mininet
 from mininet.cli import CLI
-
-# Import du type de lien avec possibilité de configurer bande passante, délai, pertes, etc.
 from mininet.link import TCLink
-
-# Import des fonctions de log Mininet
-from mininet.log import setLogLevel, info
-
-# Import de l'objet principal Mininet
+from mininet.log import info, setLogLevel
 from mininet.net import Mininet
+from mininet.node import OVSSwitch, RemoteController
 
-# Import du contrôleur distant et du switch Open vSwitch
-from mininet.node import RemoteController, OVSSwitch
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+CONFIG_FILE = BASE_DIR / "topology_config.json"
+
+
+def load_config():
+    with CONFIG_FILE.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def host_ip(config, last_octet):
+    prefix = config["addressing"].get("host_prefix", "10.0.0.")
+    return f"{prefix}{last_octet}/24"
+
+
+def generate_hosts(config):
+    topology = config["topology"]
+    addressing = config["addressing"]
+    switch_count = int(topology.get("switches", 2))
+    hosts_per_switch = int(topology.get("hosts_per_switch", 2))
+    next_host = int(addressing.get("host_start", 1))
+
+    hosts = []
+    for switch_id in range(1, switch_count + 1):
+        for _ in range(hosts_per_switch):
+            hosts.append(
+                {
+                    "name": f"h{next_host}",
+                    "label": f"H{next_host}",
+                    "switch": switch_id,
+                    "ip": host_ip(config, next_host),
+                    "service": "client",
+                }
+            )
+            next_host += 1
+
+    for server in topology.get("servers", []):
+        last_octet = int(server.get("ip_last_octet", addressing.get("server_start", 100)))
+        hosts.append(
+            {
+                "name": server["name"],
+                "label": server.get("label", server["name"]),
+                "switch": int(server.get("switch", 1)),
+                "ip": host_ip(config, last_octet),
+                "service": server.get("service", "server"),
+            }
+        )
+
+    return hosts
 
 
 def build_topology():
-    """
-    Crée une topologie SDN avec :
-    - 1 contrôleur Ryu distant ;
-    - 2 switches Open vSwitch en OpenFlow 1.3 ;
-    - 5 hôtes : h1, h2, h3, h4 et web1 ;
-    - un serveur HTTP simple lancé sur web1.
-    """
+    config = load_config()
+    controller = config["controller"]
+    topology = config["topology"]
+    switch_count = int(topology.get("switches", 2))
+    hosts_config = generate_hosts(config)
 
-    # Création du réseau Mininet sans contrôleur par défaut
-    net = Mininet(
-        controller=None,
-        switch=OVSSwitch,
-        link=TCLink,
-        autoSetMacs=True
-    )
+    net = Mininet(controller=None, switch=OVSSwitch, link=TCLink, autoSetMacs=True)
+    started_servers = []
 
     try:
         info("*** Ajout du contrôleur distant Ryu\n")
-
-        # Le contrôleur Ryu doit être lancé sur le même port : 6653
         c0 = net.addController(
             "c0",
             controller=RemoteController,
-            ip="127.0.0.1",
-            port=6653
+            ip=controller.get("host", "127.0.0.1"),
+            port=int(controller.get("openflow_port", 6653)),
         )
 
-        info("*** Création des switches OpenFlow 1.3\n")
+        info(f"*** Création de {switch_count} switches OpenFlow 1.3\n")
+        switches = {
+            switch_id: net.addSwitch(f"s{switch_id}", protocols="OpenFlow13")
+            for switch_id in range(1, switch_count + 1)
+        }
 
-        # Switches Open vSwitch configurés pour OpenFlow 1.3
-        s1 = net.addSwitch("s1", protocols="OpenFlow13")
-        s2 = net.addSwitch("s2", protocols="OpenFlow13")
+        info(f"*** Création de {len(hosts_config)} hôtes/serveurs\n")
+        hosts = {}
+        for host_cfg in hosts_config:
+            host = net.addHost(host_cfg["name"], ip=host_cfg["ip"])
+            hosts[host_cfg["name"]] = host
+            net.addLink(host, switches[int(host_cfg["switch"])])
+            info(f"    {host_cfg['name']} ({host_cfg['label']}) -> s{host_cfg['switch']} / {host_cfg['ip']}\n")
 
-        info("*** Création des hôtes\n")
-
-        # Hôtes du réseau
-        h1 = net.addHost("h1", ip="10.0.0.1/24")
-        h2 = net.addHost("h2", ip="10.0.0.2/24")
-        h3 = net.addHost("h3", ip="10.0.0.3/24")
-        h4 = net.addHost("h4", ip="10.0.0.4/24")
-
-        # Hôte utilisé comme serveur web
-        web1 = net.addHost("web1", ip="10.0.0.100/24")
-
-        info("*** Création des liens\n")
-
-        # Switch s1 : h1, h2 et web1
-        net.addLink(h1, s1)
-        net.addLink(h2, s1)
-        net.addLink(web1, s1)
-
-        # Lien entre les deux switches
-        net.addLink(s1, s2)
-
-        # Switch s2 : h3 et h4
-        net.addLink(h3, s2)
-        net.addLink(h4, s2)
+        info("*** Création des liens inter-switches\n")
+        for switch_id in range(1, switch_count):
+            net.addLink(switches[switch_id], switches[switch_id + 1])
+            info(f"    s{switch_id} -- s{switch_id + 1}\n")
 
         info("*** Démarrage du réseau\n")
-
-        # Construction du réseau
         net.build()
-
-        # Démarrage du contrôleur
         c0.start()
+        for switch in switches.values():
+            switch.start([c0])
 
-        # Démarrage des switches avec le contrôleur Ryu
-        s1.start([c0])
-        s2.start([c0])
+        for host_cfg in hosts_config:
+            if host_cfg.get("service") == "http":
+                host = hosts[host_cfg["name"]]
+                info(f"*** Lancement HTTP sur {host_cfg['name']}:80\n")
+                host.cmd("cd /tmp && python3 -m http.server 80 >/tmp/mininet-http.log 2>&1 &")
+                started_servers.append(host)
 
-        info("*** Lancement du serveur web simple sur web1:80\n")
+        info("*** Topologie SDN prête\n")
+        info("*** Commandes utiles : pingall, h1 ping -c 4 h2, h1 curl http://10.0.0.100\n")
+        info("*** Pour voir OpenFlow : sh ovs-ofctl dump-flows s1 -O OpenFlow13\n")
 
-        # Lancement d'un serveur HTTP simple sur web1
-        web1.cmd("cd /tmp && python3 -m http.server 80 >/tmp/web1-http.log 2>&1 &")
-
-        info("*** Topologie prête\n")
-        info("*** Commandes utiles :\n")
-        info("    pingall\n")
-        info("    h1 ping -c 4 h2\n")
-        info("    h1 ping -c 4 web1\n")
-        info("    h1 curl http://10.0.0.100\n")
-        info("    sh ovs-ofctl dump-flows s1 -O OpenFlow13\n")
-        info("    sh ovs-ofctl dump-flows s2 -O OpenFlow13\n")
-
-        # Ouverture de la CLI Mininet
         CLI(net)
 
     finally:
-        info("*** Arrêt du serveur web sur web1\n")
-
-        # Arrêter le serveur web si web1 existe
-        try:
-            web1.cmd("pkill -f 'python3 -m http.server 80' || true")
-        except Exception:
-            pass
-
-        info("*** Arrêt du réseau Mininet\n")
-
-        # Nettoyage du réseau
+        info("*** Arrêt des services et nettoyage Mininet\n")
+        for host in started_servers:
+            host.cmd("pkill -f 'python3 -m http.server 80' || true")
         net.stop()
 
 
 if __name__ == "__main__":
-    # Niveau de log Mininet
     setLogLevel("info")
-
-    # Construction et lancement de la topologie
     build_topology()

@@ -1,0 +1,28 @@
+{
+  "name": "Infrastructure SDN agile",
+  "controller": {
+    "host": "127.0.0.1",
+    "openflow_port": 6653,
+    "api_port": 8080
+  },
+  "addressing": {
+    "network": "10.0.0.0/24",
+    "host_prefix": "10.0.0.",
+    "host_start": 1,
+    "server_start": 100
+  },
+  "topology": {
+    "type": "linear",
+    "switches": 3,
+    "hosts_per_switch": 2,
+    "servers": [
+      {
+        "name": "web1",
+        "label": "Serveur Web",
+        "switch": 1,
+        "service": "http",
+        "ip_last_octet": 100
+      }
+    ]
+  }
+}

@@ -32,6 +32,74 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Fichier des règles firewall
 POLICY_FILE = os.path.join(BASE_DIR, "policies", "firewall_rules.json")
+TOPOLOGY_CONFIG_FILE = os.path.join(BASE_DIR, "topology_config.json")
+
+def load_topology_config():
+    """
+    Charge la configuration partagee par Mininet, Ryu et le dashboard.
+    """
+
+    default_config = {
+        "name": "Infrastructure SDN agile",
+        "controller": {"api_port": 8080},
+        "addressing": {"host_prefix": "10.0.0.", "host_start": 1, "server_start": 100},
+        "topology": {"type": "linear", "switches": 2, "hosts_per_switch": 2, "servers": []},
+    }
+
+    if not os.path.exists(TOPOLOGY_CONFIG_FILE):
+        return default_config
+
+    try:
+        with open(TOPOLOGY_CONFIG_FILE, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return default_config
+
+
+def build_expected_hosts(config):
+    """
+    Genere les hotes attendus et leur adressage IP automatique.
+    """
+
+    topology = config.get("topology", {})
+    addressing = config.get("addressing", {})
+    prefix = addressing.get("host_prefix", "10.0.0.")
+    switch_count = int(topology.get("switches", 2))
+    hosts_per_switch = int(topology.get("hosts_per_switch", 2))
+    next_host = int(addressing.get("host_start", 1))
+    expected = []
+
+    for switch_id in range(1, switch_count + 1):
+        for _ in range(hosts_per_switch):
+            expected.append(
+                {
+                    "name": f"h{next_host}",
+                    "label": f"H{next_host}",
+                    "ip": f"{prefix}{next_host}",
+                    "switch": switch_id,
+                    "service": "client",
+                }
+            )
+            next_host += 1
+
+    for server in topology.get("servers", []):
+        last_octet = int(server.get("ip_last_octet", addressing.get("server_start", 100)))
+        expected.append(
+            {
+                "name": server.get("name", f"srv{last_octet}"),
+                "label": server.get("label", server.get("name", f"Serveur {last_octet}")),
+                "ip": f"{prefix}{last_octet}",
+                "switch": int(server.get("switch", 1)),
+                "service": server.get("service", "server"),
+            }
+        )
+
+    return expected
+
+
+TOPOLOGY_CONFIG = load_topology_config()
+EXPECTED_HOSTS = build_expected_hosts(TOPOLOGY_CONFIG)
+HOST_NAMES = {host["ip"]: host["label"] for host in EXPECTED_HOSTS}
 
 
 # État global exposé au dashboard
@@ -42,6 +110,22 @@ STATE = {
     "events": [],
     "flows": [],
     "rules": [],
+    "topology": {
+        "name": TOPOLOGY_CONFIG.get("name", "Infrastructure SDN agile"),
+        "type": TOPOLOGY_CONFIG.get("topology", {}).get("type", "linear"),
+        "switches": int(TOPOLOGY_CONFIG.get("topology", {}).get("switches", 2)),
+        "expected_hosts": EXPECTED_HOSTS,
+    },
+    "summary": {
+        "allowed_flows": 0,
+        "blocked_flows": 0,
+        "total_packets": 0,
+        "total_bytes": 0,
+        "by_switch": {},
+        "by_protocol": {},
+        "top_flows": [],
+        "history": [],
+    },
 }
 
 
@@ -52,7 +136,7 @@ STATE_LOCK = threading.Lock()
 CONTROLLER_APP = None
 
 
-def add_event(message):
+def add_event(message, event_type="info", meta=None):
     """
     Ajoute un événement visible depuis le dashboard.
     """
@@ -62,7 +146,9 @@ def add_event(message):
             0,
             {
                 "time": time.strftime("%H:%M:%S"),
+                "type": event_type,
                 "message": message,
+                "meta": meta or {},
             },
         )
 
@@ -113,6 +199,71 @@ def ip_proto_name(proto):
         return "udp"
 
     return "any"
+
+
+def host_label(ip_address):
+    """
+    Retourne un nom lisible pour une adresse IP Mininet.
+    """
+
+    if not ip_address:
+        return "*"
+
+    return HOST_NAMES.get(ip_address, ip_address)
+
+
+def build_summary(flows, previous_history=None):
+    """
+    Agrege les flux pour alimenter les graphiques du dashboard.
+    """
+
+    by_switch = {}
+    by_protocol = {}
+    total_packets = 0
+    total_bytes = 0
+
+    for flow in flows:
+        switch_key = f"S{flow.get('switch')}"
+        proto_key = flow.get("proto") or "any"
+        packets = int(flow.get("packets") or 0)
+        byte_count = int(flow.get("bytes") or 0)
+
+        total_packets += packets
+        total_bytes += byte_count
+
+        by_switch.setdefault(switch_key, {"flows": 0, "packets": 0, "bytes": 0})
+        by_switch[switch_key]["flows"] += 1
+        by_switch[switch_key]["packets"] += packets
+        by_switch[switch_key]["bytes"] += byte_count
+
+        by_protocol.setdefault(proto_key, {"flows": 0, "packets": 0, "bytes": 0})
+        by_protocol[proto_key]["flows"] += 1
+        by_protocol[proto_key]["packets"] += packets
+        by_protocol[proto_key]["bytes"] += byte_count
+
+    history = list(previous_history or [])
+    history.append(
+        {
+            "time": time.strftime("%H:%M:%S"),
+            "packets": total_packets,
+            "bytes": total_bytes,
+            "flows": len(flows),
+        }
+    )
+    history = history[-24:]
+
+    top_flows = sorted(flows, key=lambda item: int(item.get("packets") or 0), reverse=True)[:5]
+
+    return {
+        "allowed_flows": sum(1 for flow in flows if flow.get("action") == "autorise"),
+        "blocked_flows": sum(1 for flow in flows if flow.get("action") == "bloque"),
+        "total_packets": total_packets,
+        "total_bytes": total_bytes,
+        "by_switch": by_switch,
+        "by_protocol": by_protocol,
+        "top_flows": top_flows,
+        "history": history,
+    }
 
 
 class DashboardApiHandler(BaseHTTPRequestHandler):
@@ -201,7 +352,11 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
                     changed = True
 
                     status = "activee" if rule["enabled"] else "desactivee"
-                    add_event(f"Regle {rule_id} -> {status}")
+                    add_event(
+                        f"Politique dynamique : {rule_id} -> {status}",
+                        "policy_toggle",
+                        {"rule_id": rule_id, "enabled": rule["enabled"]},
+                    )
 
                     break
 
@@ -245,8 +400,9 @@ def start_api_server():
     """
 
     try:
-        server = ReusableThreadingHTTPServer(("0.0.0.0", 8080), DashboardApiHandler)
-        add_event("API controleur disponible sur le port 8080")
+        api_port = int(TOPOLOGY_CONFIG.get("controller", {}).get("api_port", 8080))
+        server = ReusableThreadingHTTPServer(("0.0.0.0", api_port), DashboardApiHandler)
+        add_event(f"API controleur disponible sur le port {api_port}", "api")
         server.serve_forever()
 
     except OSError as error:
@@ -275,6 +431,8 @@ class SdnController(app_manager.RyuApp):
 
         # Switches connectés : self.datapaths[dpid] = datapath
         self.datapaths = {}
+        self.seen_hosts = set()
+        self.recent_packet_events = {}
 
         # Charger les règles au démarrage
         with STATE_LOCK:
@@ -319,7 +477,11 @@ class SdnController(app_manager.RyuApp):
             actions=actions,
         )
 
-        add_event(f"Switch s{datapath.id} connecte")
+        add_event(
+            f"Switch S{datapath.id} connecte au controleur Ryu",
+            "switch_connected",
+            {"switch": datapath.id},
+        )
 
         with STATE_LOCK:
             STATE["switches"][str(datapath.id)] = {
@@ -446,8 +608,19 @@ class SdnController(app_manager.RyuApp):
                     idle_timeout=0,
                     hard_timeout=0,
                 )
+                add_event(
+                    f"Flux bloque par politique sur S{dp.id} : {host_label(rule.get('src_ip'))} -> {host_label(rule.get('dst_ip'))}",
+                    "flow_blocked",
+                    {
+                        "switch": dp.id,
+                        "rule_id": rule.get("id"),
+                        "src_ip": rule.get("src_ip"),
+                        "dst_ip": rule.get("dst_ip"),
+                        "proto": proto,
+                    },
+                )
 
-        add_event("Regles de politique appliquees")
+        add_event("Regles de politique appliquees aux switches", "policy_apply")
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
@@ -495,35 +668,83 @@ class SdnController(app_manager.RyuApp):
         # Détection IP ou ARP pour le dashboard
         ip_pkt = pkt.get_protocol(ipv4.ipv4)
         arp_pkt = pkt.get_protocol(arp.arp)
+        src_ip = None
+        dst_ip = None
 
         if ip_pkt:
+            src_ip = ip_pkt.src
+            dst_ip = ip_pkt.dst
             with STATE_LOCK:
                 STATE["hosts"][ip_pkt.src] = {
+                    "name": host_label(ip_pkt.src),
                     "mac": src,
                     "switch": dpid,
                     "port": in_port,
                 }
 
+            if ip_pkt.src not in self.seen_hosts:
+                self.seen_hosts.add(ip_pkt.src)
+                add_event(
+                    f"Hote detecte : {host_label(ip_pkt.src)} ({ip_pkt.src}) sur S{dpid}, port {in_port}",
+                    "host_detected",
+                    {"ip": ip_pkt.src, "switch": dpid, "port": in_port},
+                )
+
         elif arp_pkt:
+            src_ip = arp_pkt.src_ip
+            dst_ip = arp_pkt.dst_ip
             with STATE_LOCK:
                 STATE["hosts"][arp_pkt.src_ip] = {
+                    "name": host_label(arp_pkt.src_ip),
                     "mac": src,
                     "switch": dpid,
                     "port": in_port,
                 }
+            if arp_pkt.src_ip not in self.seen_hosts:
+                self.seen_hosts.add(arp_pkt.src_ip)
+                add_event(
+                    f"Hote detecte : {host_label(arp_pkt.src_ip)} ({arp_pkt.src_ip}) sur S{dpid}, port {in_port}",
+                    "host_detected",
+                    {"ip": arp_pkt.src_ip, "switch": dpid, "port": in_port},
+                )
+
+        packet_key = (dpid, src_ip or src, dst_ip or dst)
+        now = time.time()
+        if now - self.recent_packet_events.get(packet_key, 0) > 3:
+            self.recent_packet_events[packet_key] = now
+            add_event(
+                f"Packet-In recu depuis S{dpid} : {host_label(src_ip)} -> {host_label(dst_ip)}",
+                "packet_in",
+                {"switch": dpid, "src_ip": src_ip, "dst_ip": dst_ip, "in_port": in_port},
+            )
 
         # Trouver le port de sortie
         out_port = self.mac_to_port[dpid].get(dst, ofproto.OFPP_FLOOD)
 
         actions = [parser.OFPActionOutput(out_port)]
+        decision = "flood" if out_port == ofproto.OFPP_FLOOD else "autoriser"
+        add_event(
+            f"Decision du controleur : {decision} {host_label(src_ip)} -> {host_label(dst_ip)} sur S{dpid}",
+            "decision",
+            {"switch": dpid, "src_ip": src_ip, "dst_ip": dst_ip, "out_port": out_port},
+        )
 
         # Installer un flux temporaire si la destination est connue
         if out_port != ofproto.OFPP_FLOOD:
-            match = parser.OFPMatch(
-                in_port=in_port,
-                eth_src=src,
-                eth_dst=dst,
-            )
+            if ip_pkt:
+                match = parser.OFPMatch(
+                    in_port=in_port,
+                    eth_type=ether_types.ETH_TYPE_IP,
+                    ipv4_src=ip_pkt.src,
+                    ipv4_dst=ip_pkt.dst,
+                    ip_proto=ip_pkt.proto,
+                )
+            else:
+                match = parser.OFPMatch(
+                    in_port=in_port,
+                    eth_src=src,
+                    eth_dst=dst,
+                )
 
             self.add_flow(
                 datapath=datapath,
@@ -531,6 +752,11 @@ class SdnController(app_manager.RyuApp):
                 match=match,
                 actions=actions,
                 idle_timeout=30,
+            )
+            add_event(
+                f"Flow-Mod installe sur S{dpid} : {host_label(src_ip)} -> {host_label(dst_ip)} via port {out_port}",
+                "flow_mod",
+                {"switch": dpid, "src_ip": src_ip, "dst_ip": dst_ip, "out_port": out_port},
             )
 
         # Envoyer le paquet
@@ -611,6 +837,13 @@ class SdnController(app_manager.RyuApp):
             match = self.match_to_dict(stat.match)
 
             proto = ip_proto_name(match.get("ip_proto"))
+            src_ip = match.get("ipv4_src")
+            dst_ip = match.get("ipv4_dst")
+            action = "bloque" if stat.priority >= 100 else "autorise"
+            readable = f"{host_label(src_ip)} -> {host_label(dst_ip)}"
+
+            if not src_ip and not dst_ip:
+                readable = "Flux Ethernet appris"
 
             flows.append(
                 {
@@ -618,6 +851,12 @@ class SdnController(app_manager.RyuApp):
                     "priority": stat.priority,
                     "match": match,
                     "proto": proto,
+                    "src_ip": src_ip,
+                    "dst_ip": dst_ip,
+                    "src_name": host_label(src_ip),
+                    "dst_name": host_label(dst_ip),
+                    "action": action,
+                    "readable": readable,
                     "packets": stat.packet_count,
                     "bytes": stat.byte_count,
                     "duration": int(stat.duration_sec),
@@ -632,3 +871,7 @@ class SdnController(app_manager.RyuApp):
             ]
 
             STATE["flows"] = other_flows + flows
+            STATE["summary"] = build_summary(
+                STATE["flows"],
+                STATE.get("summary", {}).get("history", []),
+            )

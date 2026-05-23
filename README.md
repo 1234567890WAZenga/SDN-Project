@@ -38,6 +38,7 @@ sdn_project/
     sdn_controller.py
   topology/
     sdn_topology.py
+  topology_config.json
   dashboard/
     app.py
     templates/index.html
@@ -103,6 +104,39 @@ sh ovs-ofctl dump-flows s1 -O OpenFlow13
 sh ovs-ofctl dump-flows s2 -O OpenFlow13
 ```
 
+## Topologie configurable
+
+La topologie est définie dans `topology_config.json`.
+
+Paramètres importants :
+
+```json
+{
+  "topology": {
+    "type": "linear",
+    "switches": 3,
+    "hosts_per_switch": 2,
+    "servers": [
+      {
+        "name": "web1",
+        "label": "Serveur Web",
+        "switch": 1,
+        "service": "http",
+        "ip_last_octet": 100
+      }
+    ]
+  }
+}
+```
+
+Avec cette configuration, Mininet crée automatiquement :
+
+- 3 switches : `s1`, `s2`, `s3` ;
+- 2 hôtes par switch : `h1` à `h6` ;
+- 1 serveur web : `web1` avec l'adresse `10.0.0.100`.
+
+L'adressage est automatique dans `10.0.0.0/24`.
+
 ## Idee de demonstration
 
 1. Lancer Ryu.
@@ -113,4 +147,15 @@ sh ovs-ofctl dump-flows s2 -O OpenFlow13
 6. Bloquer un flux depuis le dashboard.
 7. Refaire le test et montrer que le trafic est bloque.
 
+## Ce que le dashboard prouve
 
+Le dashboard montre le fonctionnement SDN à travers :
+
+- les switches connectés au contrôleur Ryu ;
+- les hôtes détectés par les paquets ;
+- les événements `Packet-In` ;
+- les décisions du contrôleur ;
+- les règles `Flow-Mod` installées ;
+- les flux autorisés ou bloqués ;
+- les compteurs de paquets et d'octets ;
+- les graphiques de trafic, protocoles et charge par switch.
