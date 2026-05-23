@@ -790,15 +790,35 @@
 
       function renderTrafficChart(summary) {
         const chart = document.getElementById("trafficChart");
-        const history = ((summary || {}).history || []).map((item) => Number(item.packets || 0));
-        const values = history.length ? history : [0];
+        const history = (summary || {}).history || [];
+        const values = history.length ? history.map((item) => Number(item.packets || 0)) : [0];
         const max = Math.max(...values, 1);
-        chart.innerHTML = "";
-        for (const value of values) {
-          const bar = document.createElement("span");
-          bar.style.height = Math.max(4, Math.round((value / max) * 100)) + "%";
-          chart.appendChild(bar);
-        }
+        const width = 640;
+        const height = 210;
+        const pad = 22;
+        const usableW = width - pad * 2;
+        const usableH = height - pad * 2;
+        const points = values.map((value, index) => {
+          const x = pad + (values.length === 1 ? usableW : (index / (values.length - 1)) * usableW);
+          const y = height - pad - (value / max) * usableH;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+        const lastValue = values[values.length - 1] || 0;
+
+        chart.innerHTML = `
+          <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Courbe du trafic">
+            <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" class="axis"></line>
+            <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" class="axis"></line>
+            <polyline class="trafficArea" points="${pad},${height - pad} ${points} ${width - pad},${height - pad}"></polyline>
+            <polyline class="trafficLine" points="${points}"></polyline>
+            ${values.map((value, index) => {
+              const x = pad + (values.length === 1 ? usableW : (index / (values.length - 1)) * usableW);
+              const y = height - pad - (value / max) * usableH;
+              return `<circle class="trafficPoint" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"></circle>`;
+            }).join("")}
+            <text x="${width - pad}" y="${pad + 4}" text-anchor="end" class="chartValue">${lastValue} paquets</text>
+          </svg>
+        `;
       }
 
       function updateProof(state) {

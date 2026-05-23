@@ -491,18 +491,44 @@ button.primaryBtn {
 
 .lineChart {
   height: 220px;
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
   padding: 18px;
   border-bottom: 1px solid var(--line);
 }
 
-.lineChart span {
-  flex: 1;
-  min-width: 6px;
-  background: linear-gradient(180deg, #2d6cdf, #0f766e);
-  border-radius: 4px 4px 0 0;
+.lineChart svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.axis {
+  stroke: #d5deea;
+  stroke-width: 1;
+}
+
+.trafficArea {
+  fill: rgba(36, 84, 166, 0.12);
+  stroke: none;
+}
+
+.trafficLine {
+  fill: none;
+  stroke: var(--control);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trafficPoint {
+  fill: #ffffff;
+  stroke: var(--control);
+  stroke-width: 2;
+}
+
+.chartValue {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .chartLegend {

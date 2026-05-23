@@ -3,8 +3,10 @@ import contextlib
 import io
 import json
 import shlex
+import socket
 import subprocess
 import threading
+import time
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -23,6 +25,17 @@ MININET_API_PORT = 8090
 def load_config():
     with CONFIG_FILE.open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def wait_for_controller(host, port, timeout=10):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return True
+        except OSError:
+            time.sleep(0.5)
+    return False
 
 
 def host_ip(config, last_octet):
@@ -237,6 +250,8 @@ def build_topology():
     config = load_config()
     controller = config["controller"]
     topology = config["topology"]
+    controller_host = controller.get("host", "127.0.0.1")
+    controller_port = int(controller.get("openflow_port", 6653))
     switch_count = int(topology.get("switches", 2))
     hosts_config = generate_hosts(config)
 
@@ -245,12 +260,19 @@ def build_topology():
     api_server = None
 
     try:
+        info(f"*** Vérification du contrôleur Ryu {controller_host}:{controller_port}\n")
+        if not wait_for_controller(controller_host, controller_port):
+            raise SystemExit(
+                f"ERREUR : le contrôleur Ryu n'écoute pas sur {controller_host}:{controller_port}.\n"
+                "Lance d'abord ./scripts/run_controller.sh dans un autre terminal et vérifie qu'il reste actif."
+            )
+
         info("*** Ajout du contrôleur distant Ryu\n")
         c0 = net.addController(
             "c0",
             controller=RemoteController,
-            ip=controller.get("host", "127.0.0.1"),
-            port=int(controller.get("openflow_port", 6653)),
+            ip=controller_host,
+            port=controller_port,
         )
 
         info(f"*** Création de {switch_count} switches OpenFlow 1.3\n")
