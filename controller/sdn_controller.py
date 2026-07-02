@@ -120,8 +120,13 @@ STATE = {
     "summary": {
         "allowed_flows": 0,
         "blocked_flows": 0,
+        "allowed_packets": 0,
+        "blocked_packets": 0,
         "total_packets": 0,
         "total_bytes": 0,
+        "packet_in_count": 0,
+        "flow_mod_count": 0,
+        "last_rule": None,
         "by_switch": {},
         "by_protocol": {},
         "top_flows": [],
@@ -156,6 +161,14 @@ def add_event(message, event_type="info", meta=None):
         # Garder seulement les 80 derniers événements
         STATE["events"] = STATE["events"][:80]
 
+        summary = STATE.setdefault("summary", {})
+        if event_type == "packet_in":
+            summary["packet_in_count"] = int(summary.get("packet_in_count") or 0) + 1
+        elif event_type == "flow_mod":
+            summary["flow_mod_count"] = int(summary.get("flow_mod_count") or 0) + 1
+        elif event_type in {"policy_create", "policy_toggle", "policy_delete"}:
+            summary["last_rule"] = message
+
 
 def load_rules():
     """
@@ -182,7 +195,8 @@ def save_rules(rules):
     os.makedirs(os.path.dirname(POLICY_FILE), exist_ok=True)
 
     with open(POLICY_FILE, "w", encoding="utf-8") as handle:
-        json.dump(rules, handle, indent=2)
+        json.dump(rules, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
 
 
 def validate_rule_payload(data, existing_rule=None):
@@ -215,8 +229,8 @@ def validate_rule_payload(data, existing_rule=None):
     if rule["proto"] not in {"any", "icmp", "tcp", "udp"}:
         raise ValueError("Protocole invalide.")
 
-    if rule["action"] != "deny":
-        raise ValueError("Seules les regles deny sont supportees pour le moment.")
+    if rule["action"] not in {"deny", "allow"}:
+        raise ValueError("Action invalide.")
 
     return rule
 
@@ -258,6 +272,8 @@ def build_summary(flows, previous_history=None):
     by_protocol = {}
     total_packets = 0
     total_bytes = 0
+    allowed_packets = 0
+    blocked_packets = 0
 
     expected_switches = int(TOPOLOGY_CONFIG.get("topology", {}).get("switches", 0))
     for switch_id in range(1, expected_switches + 1):
@@ -271,6 +287,10 @@ def build_summary(flows, previous_history=None):
 
         total_packets += packets
         total_bytes += byte_count
+        if flow.get("action") == "bloque":
+            blocked_packets += packets
+        else:
+            allowed_packets += packets
 
         by_switch.setdefault(switch_key, {"flows": 0, "packets": 0, "bytes": 0})
         by_switch[switch_key]["flows"] += 1
@@ -298,8 +318,13 @@ def build_summary(flows, previous_history=None):
     return {
         "allowed_flows": sum(1 for flow in flows if flow.get("action") == "autorise"),
         "blocked_flows": sum(1 for flow in flows if flow.get("action") == "bloque"),
+        "allowed_packets": allowed_packets,
+        "blocked_packets": blocked_packets,
         "total_packets": total_packets,
         "total_bytes": total_bytes,
+        "packet_in_count": int(STATE.get("summary", {}).get("packet_in_count") or 0),
+        "flow_mod_count": int(STATE.get("summary", {}).get("flow_mod_count") or 0),
+        "last_rule": STATE.get("summary", {}).get("last_rule"),
         "by_switch": by_switch,
         "by_protocol": by_protocol,
         "top_flows": top_flows,
@@ -443,7 +468,7 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
                 STATE["rules"] = rules
 
             add_event(
-                f"Nouvelle politique : {new_rule['description']} ({host_label(new_rule.get('src_ip'))} -> {host_label(new_rule.get('dst_ip'))})",
+                f"Nouvelle politique {new_rule['action']} : {new_rule['description']} ({host_label(new_rule.get('src_ip'))} -> {host_label(new_rule.get('dst_ip'))})",
                 "policy_create",
                 {"rule_id": new_rule["id"]},
             )

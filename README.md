@@ -1,72 +1,63 @@
 # Implémentation d'une infrastructure réseau agile basée sur le SDN
 
-Ce projet met en place une infrastructure SDN virtualisée avec **Mininet**, **Open vSwitch**, **Ryu**, **OpenFlow** et un **dashboard web Flask**.
+Ce projet met en place une infrastructure SDN virtualisée avec **Mininet**, **Open vSwitch**, **Ryu**, **OpenFlow** et un **dashboard Flask**.
 
-L'objectif est de montrer concrètement comment fonctionne le SDN : les switches transportent les paquets, tandis qu'un contrôleur central prend les décisions, installe les règles OpenFlow, applique des politiques dynamiques et collecte les statistiques du réseau.
+L'objectif est de montrer comment un réseau SDN fonctionne : le contrôleur Ryu prend les décisions, les switches Open vSwitch appliquent les règles OpenFlow, et le dashboard permet de visualiser, tester et gérer le réseau.
 
-## Objectifs du projet
-
-- Créer une topologie réseau virtuelle avec Mininet.
-- Connecter des switches Open vSwitch à un contrôleur Ryu.
-- Observer le fonctionnement `Packet-In` puis `Flow-Mod`.
-- Installer dynamiquement des règles OpenFlow.
-- Autoriser ou bloquer certains flux réseau.
-- Collecter les statistiques de trafic : paquets, octets, protocoles, durée.
-- Afficher l'état du réseau dans un dashboard.
-- Rendre la topologie configurable : nombre de switches, hôtes et serveurs.
-
-## Architecture SDN
+## Architecture
 
 ```text
-Dashboard Flask : http://IP_VM:3000
+Navigateur : http://IP_VM:3000
         |
-        | API HTTP : port 8080
         v
+Dashboard Flask
+        |
+        +--> API Ryu : état, flux, règles, événements
+        |
+        +--> API Mininet : commandes et état de la topologie
+
 Contrôleur Ryu
         |
-        | OpenFlow : port 6653
+        | OpenFlow 1.3
         v
 Open vSwitch / Mininet
         |
         v
-Hôtes, switches et serveurs virtuels
+Hôtes virtuels h1, h2, h3...
 ```
 
-Le projet sépare clairement :
+## Rôle du dashboard
 
-- **Plan de contrôle** : le contrôleur Ryu prend les décisions.
-- **Plan de données** : Open vSwitch applique les règles et transfère les paquets.
+Le dashboard a trois rôles simples :
+
+- **Visualiser** : contrôleur, switches, hôtes, flux OpenFlow et événements.
+- **Tester** : lancer des commandes Mininet comme `pingall` ou `h1 ping -c 4 h2`.
+- **Gérer** : configurer la topologie et créer des règles SDN dynamiques.
 
 ## Structure du projet
 
 ```text
 sdn_project/
-  controller/
-    sdn_controller.py        # Contrôleur Ryu, API, règles et statistiques
-  topology/
-    sdn_topology.py          # Génération de la topologie Mininet
-  dashboard/
-    app.py                   # Serveur Flask du dashboard
-    templates/index.html     # Interface web
-    static/styles.css        # Style de l'interface
-  policies/
-    firewall_rules.json      # Règles dynamiques de blocage/autorisation
-  scripts/
-    install_ubuntu.sh        # Installation des dépendances
-    run_controller.sh        # Lance Ryu
-    run_topology.sh          # Lance Mininet
-    run_dashboard.sh         # Lance Flask
-  tests/
-    test_commands.sh         # Commandes utiles de vérification
-  topology_config.json       # Configuration de la topologie
-  requirements.txt           # Dépendances Python
+  controller/sdn_controller.py      # Contrôleur Ryu, API, règles, statistiques
+  topology/sdn_topology.py          # Topologie Mininet configurable
+  dashboard/app.py                  # Serveur Flask
+  dashboard/templates/index.html    # Interface du dashboard
+  dashboard/static/styles.css       # Style du dashboard
+  policies/firewall_rules.json      # Règles SDN dynamiques
+  scripts/install_ubuntu.sh         # Installation Ubuntu
+  scripts/run_controller.sh         # Lance Ryu
+  scripts/run_topology.sh           # Lance Mininet
+  scripts/run_dashboard.sh          # Lance Flask
+  scripts/diagnose.sh               # Diagnostic des services
+  topology_config.json              # Nombre de switches et hôtes
+  requirements.txt                  # Dépendances Python
 ```
 
 ## Topologie configurable
 
-La topologie est définie dans [topology_config.json](./topology_config.json).
+La topologie est définie dans `topology_config.json`.
 
-Exemple actuel :
+Exemple :
 
 ```json
 {
@@ -74,107 +65,62 @@ Exemple actuel :
     "type": "linear",
     "switches": 3,
     "hosts_per_switch": 2,
-    "servers": [
-      {
-        "name": "web1",
-        "label": "Serveur Web",
-        "switch": 1,
-        "service": "http",
-        "ip_last_octet": 100
-      }
-    ]
+    "servers": []
   }
 }
 ```
 
-Avec cette configuration, Mininet crée automatiquement :
+Avec cette configuration, Mininet crée :
 
-- `s1`, `s2`, `s3`;
-- `h1` à `h6`;
-- `web1` sur `10.0.0.100`;
-- des liens inter-switches en topologie linéaire;
-- un serveur HTTP simple sur `web1`.
-
-L'adressage est généré automatiquement dans le réseau `10.0.0.0/24`.
-
-## Installation dans Ubuntu
-
-Le projet doit être exécuté dans une VM Ubuntu, car Mininet et Open vSwitch nécessitent Linux.
-
-Depuis la racine du projet :
-
-```bash
-cd ~/sdn_project
-chmod +x scripts/*.sh tests/*.sh
-./scripts/install_ubuntu.sh
-```
-
-Vérifier les outils :
-
-```bash
-python3 --version
-mn --version
-ovs-vsctl --version
-ryu-manager --version
-```
+- `s1`, `s2`, `s3` ;
+- `h1` à `h6` ;
+- des liens inter-switches en topologie linéaire ;
+- un adressage automatique dans `10.0.0.0/24`.
 
 ## Lancement
 
-Ouvrir trois terminaux dans `~/sdn_project`.
+Dans la VM Ubuntu, ouvrir trois terminaux.
 
-Terminal 1 : contrôleur Ryu
+Terminal 1 :
 
 ```bash
 ./scripts/run_controller.sh
 ```
 
-Terminal 2 : topologie Mininet
+Terminal 2 :
 
 ```bash
 sudo ./scripts/run_topology.sh
 ```
 
-La topologie ouvre aussi une API locale sur le port `8090`. Cette API permet au dashboard d'exécuter des commandes Mininet dans la topologie active.
-
-Important : le script de topologie ne lance plus `mn -c` automatiquement, car `mn -c` peut arrêter `ryu-manager`. Si un nettoyage complet est nécessaire, utilise :
-
-```bash
-sudo CLEAN_MININET=1 ./scripts/run_topology.sh
-```
-
-Après un nettoyage complet, relance le contrôleur Ryu si celui-ci a été arrêté.
-
-Terminal 3 : dashboard
+Terminal 3 :
 
 ```bash
 ./scripts/run_dashboard.sh
 ```
 
-Depuis la VM ou un autre poste du même réseau :
+Puis ouvrir :
 
 ```text
 http://IP_DE_LA_VM:3000
 ```
 
-## Vérification du fonctionnement SDN
+## Commandes de démonstration
 
-Depuis le dashboard, utiliser la section **Console Mininet** ou taper les commandes dans la console Mininet.
-
-Commandes utiles :
+Depuis le dashboard ou la console Mininet :
 
 ```bash
 pingall
 h1 ping -c 4 h2
 h1 ping -c 4 h6
-h1 curl http://10.0.0.100
-h2 curl http://10.0.0.100
+h3 ping -c 4 h4
 nodes
 net
 links
 dump
 ```
 
-Afficher les règles OpenFlow :
+Pour voir les règles OpenFlow :
 
 ```bash
 sh ovs-ofctl dump-flows s1 -O OpenFlow13
@@ -182,91 +128,52 @@ sh ovs-ofctl dump-flows s2 -O OpenFlow13
 sh ovs-ofctl dump-flows s3 -O OpenFlow13
 ```
 
-Depuis le dashboard, les commandes OpenFlow doivent être préfixées par `sh`, par exemple :
+## Exemple de règle SDN
 
-```bash
-sh ovs-ofctl dump-flows s1 -O OpenFlow13
-```
-
-## Ce que le dashboard doit montrer
-
-Le dashboard sert à prouver le fonctionnement de l'infrastructure SDN.
-
-Il doit afficher :
-
-- contrôleur Ryu connecté;
-- switches Open vSwitch connectés;
-- hôtes détectés;
-- console Mininet interactive;
-- événements `Packet-In`;
-- décisions du contrôleur;
-- règles `Flow-Mod` installées;
-- flux autorisés ou bloqués;
-- compteurs de paquets et d'octets;
-- trafic dans le temps;
-- charge par switch;
-- répartition par protocole;
-- top communications;
-- règles dynamiques actives.
-
-## Politiques réseau
-
-Les règles sont définies dans [policies/firewall_rules.json](./policies/firewall_rules.json).
+Les règles sont stockées dans `policies/firewall_rules.json`.
 
 Exemple :
 
 ```json
 {
-  "id": "block_h2_to_web",
+  "id": "block_h3_to_h4_icmp",
   "enabled": true,
-  "src_ip": "10.0.0.2",
-  "dst_ip": "10.0.0.100",
-  "proto": "any",
+  "src_ip": "10.0.0.3",
+  "dst_ip": "10.0.0.4",
+  "proto": "icmp",
   "action": "deny",
-  "description": "Bloquer H2 vers le serveur web"
+  "description": "Bloquer ICMP de H3 vers H4"
 }
 ```
 
-Quand une règle est activée, le contrôleur installe une règle OpenFlow de priorité élevée dans les switches. Le trafic correspondant est bloqué sans modifier manuellement chaque switch.
+Cette règle montre que le contrôleur peut modifier le comportement du réseau sans configurer manuellement chaque switch.
 
 ## Preuves attendues
 
-Le projet fonctionne correctement si :
+Le projet est validé si :
 
-- les switches apparaissent dans le dashboard;
-- les hôtes apparaissent après `pingall`;
-- les événements `Packet-In` apparaissent dans le journal;
-- des règles `Flow-Mod` sont visibles;
-- les compteurs augmentent quand du trafic est généré;
-- le dashboard affiche des flux autorisés et bloqués;
-- `ovs-ofctl dump-flows` montre les règles dans les switches;
-- une politique dynamique change le comportement du réseau.
+- les switches apparaissent dans le dashboard ;
+- les hôtes apparaissent après `pingall` ;
+- les événements `Packet-In`, décision et `Flow-Mod` apparaissent ;
+- les flux OpenFlow sont visibles avec `dump-flows` ;
+- une règle dynamique bloque réellement une communication ;
+- les compteurs de paquets changent quand du trafic est généré.
 
-## Commandes de nettoyage
+## Diagnostic
 
-Si Mininet reste bloqué ou si une ancienne topologie continue d'exister :
+```bash
+./scripts/diagnose.sh
+```
+
+Ce script vérifie les processus, ports, bridges Open vSwitch, flux OpenFlow et API locales.
+
+## Nettoyage
+
+Si Mininet reste bloqué :
 
 ```bash
 sudo mn -c
 sudo systemctl restart openvswitch-switch
 ```
 
-Puis relancer :
-
-```bash
-./scripts/run_controller.sh
-sudo ./scripts/run_topology.sh
-./scripts/run_dashboard.sh
-```
-
-## Résultat attendu
-
-À la fin, le projet démontre une infrastructure SDN :
-
-- centralisée;
-- programmable;
-- configurable;
-- supervisable;
-- capable de gérer dynamiquement les flux réseau.
-
-Cette infrastructure montre que le comportement du réseau peut être modifié depuis un contrôleur central, grâce aux règles OpenFlow, sans reconfigurer manuellement chaque équipement.
+Puis relancer Ryu, Mininet et le dashboard.

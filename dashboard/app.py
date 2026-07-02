@@ -23,7 +23,7 @@ def read_topology_config():
 
 def write_topology_config(config):
     with TOPOLOGY_CONFIG.open("w", encoding="utf-8") as handle:
-        json.dump(config, handle, indent=2)
+        json.dump(config, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
 
 
@@ -34,34 +34,16 @@ def validated_topology_update(payload):
 
     switches = int(payload.get("switches", topology.get("switches", 2)))
     hosts_per_switch = int(payload.get("hosts_per_switch", topology.get("hosts_per_switch", 2)))
-    web_enabled = bool(payload.get("web_enabled", True))
-    web_switch = int(payload.get("web_switch", 1))
-    web_ip_last_octet = int(payload.get("web_ip_last_octet", 100))
 
     if switches < 1 or switches > 12:
         raise ValueError("Le nombre de switches doit être entre 1 et 12.")
     if hosts_per_switch < 1 or hosts_per_switch > 20:
         raise ValueError("Le nombre d'hôtes par switch doit être entre 1 et 20.")
-    if web_switch < 1 or web_switch > switches:
-        raise ValueError("Le serveur web doit être connecté à un switch existant.")
-    if web_ip_last_octet < 50 or web_ip_last_octet > 250:
-        raise ValueError("Le dernier octet du serveur web doit être entre 50 et 250.")
 
     topology["type"] = payload.get("type", topology.get("type", "linear"))
     topology["switches"] = switches
     topology["hosts_per_switch"] = hosts_per_switch
     topology["servers"] = []
-
-    if web_enabled:
-        topology["servers"].append(
-            {
-                "name": "web1",
-                "label": "Serveur Web",
-                "switch": web_switch,
-                "service": "http",
-                "ip_last_octet": web_ip_last_octet,
-            }
-        )
 
     return updated
 

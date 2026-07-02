@@ -15,14 +15,6 @@
     "type": "linear",
     "switches": 3,
     "hosts_per_switch": 2,
-    "servers": [
-      {
-        "name": "web1",
-        "label": "Serveur Web",
-        "switch": 1,
-        "service": "http",
-        "ip_last_octet": 100
-      }
-    ]
+    "servers": []
   }
 }

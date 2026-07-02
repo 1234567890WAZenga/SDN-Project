@@ -140,7 +140,7 @@ def make_command_handler(net, hosts, switches):
                         "links",
                         "dump",
                         "h1 ping -c 4 h2",
-                        "h1 curl http://10.0.0.100",
+                        "h3 ping -c 4 h4",
                         "sh ovs-ofctl dump-flows s1 -O OpenFlow13",
                     ],
                 }
@@ -289,7 +289,7 @@ def build_topology():
             for switch_id in range(1, switch_count + 1)
         }
 
-        info(f"*** Création de {len(hosts_config)} hôtes/serveurs\n")
+        info(f"*** Création de {len(hosts_config)} hôtes\n")
         hosts = {}
         for host_cfg in hosts_config:
             host = net.addHost(host_cfg["name"], ip=host_cfg["ip"])
@@ -318,7 +318,7 @@ def build_topology():
         api_server = start_mininet_api(net, hosts, switches)
 
         info("*** Topologie SDN prête\n")
-        info("*** Commandes utiles : pingall, h1 ping -c 4 h2, h1 curl http://10.0.0.100\n")
+        info("*** Commandes utiles : pingall, h1 ping -c 4 h2, h3 ping -c 4 h4\n")
         info("*** Pour voir OpenFlow : sh ovs-ofctl dump-flows s1 -O OpenFlow13\n")
 
         CLI(net)
