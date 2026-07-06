@@ -43,6 +43,20 @@ if command -v fuser >/dev/null 2>&1; then
     fuser -k 8090/tcp >/dev/null 2>&1 || true
 fi
 
+echo "Suppression des anciennes interfaces Mininet si necessaire..."
+if command -v ip >/dev/null 2>&1; then
+    ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1 | grep -E '^[[:alnum:]_.-]+-eth[0-9]+$' | while read -r intf; do
+        ip link delete "$intf" >/dev/null 2>&1 || true
+    done
+fi
+
+echo "Suppression des anciens bridges sX si necessaire..."
+if command -v ovs-vsctl >/dev/null 2>&1; then
+    ovs-vsctl --timeout=2 list-br 2>/dev/null | grep -E '^s[0-9]+$' | while read -r bridge; do
+        ovs-vsctl --if-exists del-br "$bridge" || true
+    done
+fi
+
 if [ "${CLEAN_MININET:-0}" = "1" ]; then
     echo "Nettoyage Mininet complet demandé avec CLEAN_MININET=1."
     echo "Attention : mn -c peut arrêter ryu-manager. Relance le contrôleur ensuite si besoin."

@@ -35,12 +35,20 @@ PY
 echo "Arret de l'ancienne topologie si elle existe..."
 pkill -f "python3 topology/sdn_topology.py" >/dev/null 2>&1 || true
 pkill -f "topology/sdn_topology.py" >/dev/null 2>&1 || true
+pkill -f "mininet:" >/dev/null 2>&1 || true
 
 if command -v fuser >/dev/null 2>&1; then
     fuser -k 8090/tcp >/dev/null 2>&1 || true
 fi
 
 sleep 1
+
+echo "Suppression des anciennes interfaces Mininet..."
+if command -v ip >/dev/null 2>&1; then
+    ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1 | grep -E '^[[:alnum:]_.-]+-eth[0-9]+$' | while read -r intf; do
+        ip link delete "$intf" >/dev/null 2>&1 || true
+    done
+fi
 
 echo "Nettoyage des anciens bridges Mininet..."
 if command -v ovs-vsctl >/dev/null 2>&1; then
