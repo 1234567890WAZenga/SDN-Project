@@ -18,11 +18,9 @@
         <nav class="navMenu" aria-label="Navigation dashboard">
           <button class="navItem active" data-page="overview">Vue d'ensemble</button>
           <button class="navItem" data-page="topology">Topologie</button>
-          <button class="navItem" data-page="tests">Tests reseau</button>
+          <button class="navItem" data-page="tests">Tests</button>
           <button class="navItem" data-page="rules">Regles SDN</button>
-          <button class="navItem" data-page="flows">Flux OpenFlow</button>
-          <button class="navItem" data-page="events">Evenements</button>
-          <button class="navItem" data-page="config">Configuration</button>
+          <button class="navItem" data-page="proofs">Flux et evenements</button>
         </nav>
 
         <div class="sideStatus">
@@ -54,7 +52,7 @@
             <article>
               <span>Hotes</span>
               <strong id="hostCount">0</strong>
-              <small>Machines Mininet detectees</small>
+              <small>Machines detectees</small>
             </article>
             <article>
               <span>Flux</span>
@@ -65,16 +63,6 @@
               <span>Regles bloquees</span>
               <strong id="blockedCount">0</strong>
               <small>Politiques DROP</small>
-            </article>
-            <article>
-              <span>Paquets autorises</span>
-              <strong id="allowedPackets">0</strong>
-              <small>Trafic accepte</small>
-            </article>
-            <article>
-              <span>Paquets bloques</span>
-              <strong id="blockedPackets">0</strong>
-              <small>Effet des politiques</small>
             </article>
             <article>
               <span>Packet-In</span>
@@ -88,31 +76,19 @@
             </article>
           </div>
 
-          <div class="gridTwo">
-            <article class="panel">
-              <div class="panelTitle">
-                <div>
-                  <span class="sectionLabel">Lecture rapide</span>
-                  <h3>Role du dashboard</h3>
-                </div>
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Lecture rapide</span>
+                <h3>Role du dashboard</h3>
               </div>
-              <div class="purposeGrid">
-                <div><strong>Visualiser</strong><span>Controleur, switches, hotes et liens.</span></div>
-                <div><strong>Tester</strong><span>Generer du trafic avec Mininet.</span></div>
-                <div><strong>Gerer</strong><span>Appliquer des politiques SDN.</span></div>
-              </div>
-            </article>
-
-            <article class="panel">
-              <div class="panelTitle">
-                <div>
-                  <span class="sectionLabel">Derniere action</span>
-                  <h3>Politique appliquee</h3>
-                </div>
-              </div>
-              <p id="lastRule" class="lastRule">Derniere regle : aucune</p>
-            </article>
-          </div>
+            </div>
+            <div class="purposeGrid">
+              <div><strong>Visualiser</strong><span>Controleur, switches, hotes et etat Mininet.</span></div>
+              <div><strong>Tester</strong><span>Generer du trafic avec les commandes Mininet.</span></div>
+              <div><strong>Gerer</strong><span>Appliquer des regles SDN et consulter les flux.</span></div>
+            </div>
+          </article>
 
           <article class="panel">
             <div class="panelTitle">
@@ -132,15 +108,44 @@
                 <span class="sectionLabel">Topologie</span>
                 <h3>Vue reseau</h3>
               </div>
+              <span id="topologySource" class="panelHint">Etat Mininet</span>
             </div>
             <div id="topologyActivity" class="activity hidden"></div>
             <div class="legendRow">
               <span><i class="legend control"></i>Controleur Ryu</span>
               <span><i class="legend data"></i>Switch actif</span>
-              <span><i class="legend host"></i>Hote</span>
-              <span><i class="legend warn"></i>Commande en cours</span>
+              <span><i class="legend host"></i>Hote actif</span>
+              <span><i class="legend warn"></i>Apercu configuration</span>
             </div>
             <div id="topologyMap" class="topologyMap"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Parametres</span>
+                <h3>Configuration Mininet</h3>
+              </div>
+            </div>
+            <div class="configForm">
+              <label>
+                <span>Nombre de switches</span>
+                <input id="cfgSwitches" type="number" min="1" max="12" value="3">
+              </label>
+              <label>
+                <span>Hotes par switch</span>
+                <input id="cfgHostsPerSwitch" type="number" min="1" max="20" value="2">
+              </label>
+              <label>
+                <span>Type de topologie</span>
+                <select id="cfgTopologyType">
+                  <option value="linear">Lineaire</option>
+                </select>
+              </label>
+              <button id="saveTopologyBtn" class="primaryBtn">Sauvegarder</button>
+              <button id="restartTopologyBtn" class="secondary" type="button">Relancer Mininet</button>
+            </div>
+            <p id="topologyConfigStatus" class="note">Sauvegarde la configuration, puis relance Mininet pour appliquer.</p>
           </article>
         </section>
 
@@ -200,38 +205,12 @@
               </select>
               <button class="primaryBtn" type="submit">Ajouter</button>
             </form>
-            <p id="ruleStatus" class="note">Les regles actives sont poussees vers les switches.</p>
+            <p id="ruleStatus" class="note">Les regles actives sont appliquees par le controleur Ryu.</p>
             <div id="rules" class="list"></div>
           </article>
         </section>
 
-        <section id="page-flows" class="pageView">
-          <article class="panel">
-            <div class="panelTitle">
-              <div>
-                <span class="sectionLabel">Preuve technique</span>
-                <h3>Flux installes dans Open vSwitch</h3>
-              </div>
-            </div>
-            <div class="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Communication</th>
-                    <th>Switch</th>
-                    <th>Protocole</th>
-                    <th>Decision</th>
-                    <th>Paquets</th>
-                    <th>Match</th>
-                  </tr>
-                </thead>
-                <tbody id="flows"></tbody>
-              </table>
-            </div>
-          </article>
-        </section>
-
-        <section id="page-events" class="pageView">
+        <section id="page-proofs" class="pageView">
           <article class="panel proofPanel">
             <div class="panelTitle">
               <div>
@@ -261,11 +240,29 @@
                 <small>Regle installee sur OVS.</small>
               </div>
             </div>
-            <div class="legendRow">
-              <span><i class="legend control"></i>Plan de controle</span>
-              <span><i class="legend data"></i>Plan de donnees</span>
-              <span><i class="legend flow"></i>Regle OpenFlow</span>
-              <span><i class="legend danger"></i>Flux bloque</span>
+          </article>
+
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Preuve technique</span>
+                <h3>Flux OpenFlow installes</h3>
+              </div>
+            </div>
+            <div class="tableWrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Communication</th>
+                    <th>Switch</th>
+                    <th>Protocole</th>
+                    <th>Decision</th>
+                    <th>Paquets</th>
+                    <th>Match</th>
+                  </tr>
+                </thead>
+                <tbody id="flows"></tbody>
+              </table>
             </div>
           </article>
 
@@ -279,57 +276,24 @@
             <div id="events" class="events"></div>
           </article>
         </section>
-
-        <section id="page-config" class="pageView">
-          <article class="panel">
-            <div class="panelTitle">
-              <div>
-                <span class="sectionLabel">Parametres</span>
-                <h3>Configuration Mininet</h3>
-              </div>
-            </div>
-            <div class="configForm">
-              <label>
-                <span>Nombre de switches</span>
-                <input id="cfgSwitches" type="number" min="1" max="12" value="3">
-              </label>
-              <label>
-                <span>Hotes par switch</span>
-                <input id="cfgHostsPerSwitch" type="number" min="1" max="20" value="2">
-              </label>
-              <label>
-                <span>Type de topologie</span>
-                <select id="cfgTopologyType">
-                  <option value="linear">Lineaire</option>
-                </select>
-              </label>
-              <button id="saveTopologyBtn" class="primaryBtn">Sauvegarder</button>
-              <button id="restartTopologyBtn" class="secondary" type="button">Relancer Mininet</button>
-            </div>
-            <p id="topologyConfigStatus" class="note">Sauvegarde puis relance automatique de Mininet.</p>
-          </article>
-        </section>
       </main>
     </div>
 
     <script>
       const pageMeta = {
         overview: ["Vue d'ensemble", "Etat general de l'infrastructure SDN."],
-        topology: ["Topologie", "Representation visuelle du controleur, des switches et des hotes."],
-        tests: ["Tests reseau", "Commandes Mininet pour generer du trafic et verifier la connectivite."],
-        rules: ["Regles SDN", "Creation et gestion des politiques de communication."],
-        flows: ["Flux OpenFlow", "Preuves techniques des regles installees dans Open vSwitch."],
-        events: ["Evenements", "Etapes Packet-In, decision du controleur et Flow-Mod."],
-        config: ["Configuration", "Definition du nombre de switches et d'hotes."]
+        topology: ["Topologie", "Topologie reelle Mininet et configuration."],
+        tests: ["Tests", "Commandes Mininet pour verifier la connectivite."],
+        rules: ["Regles SDN", "Politiques de communication appliquees par Ryu."],
+        proofs: ["Flux et evenements", "Preuves OpenFlow et journal du controleur."]
       };
 
-      let expectedHosts = [];
       let configuredSwitches = 2;
-      let lastState = {switches: {}, hosts: {}, topology: {}};
+      let expectedHosts = [];
+      let controllerState = {switches: {}, hosts: {}, events: [], flows: [], summary: {}};
+      let mininetRuntime = {ok: false, switching: false, switches: [], hosts: {}, topology: null};
+      let restartInProgress = false;
       let activeCommand = null;
-      let topologyOverrideUntil = 0;
-      let topologyApplying = false;
-      let mininetRuntime = {ok: false, switchCount: 0, hostCount: 0, switches: [], hosts: {}, topology: null};
 
       async function fetchJson(url, options) {
         const response = await fetch(url, options);
@@ -371,11 +335,6 @@
         window.location.hash = selected;
       }
 
-      function hostLabel(ip) {
-        const found = expectedHosts.find((host) => host.ip === ip);
-        return found ? found.name : ip || "*";
-      }
-
       function isValidIp(value) {
         if (!value) return true;
         const parts = value.split(".");
@@ -401,85 +360,62 @@
             nextHost++;
           }
         }
-
-        for (const server of topology.servers || []) {
-          hosts.push({
-            ip: prefix + Number(server.ip_last_octet || 100),
-            name: server.label || server.name || "Serveur",
-            switch: String(server.switch || 1),
-            role: "server"
-          });
-        }
-
         return hosts;
       }
 
-      function isTopologyOverrideActive() {
-        return Date.now() < topologyOverrideUntil;
-      }
-
-      function expectedHostsForState() {
-        return expectedHosts.map((host) => ({
+      function topologyHostsFromMininet() {
+        const topology = mininetRuntime.topology || {};
+        const hosts = topology.expected_hosts || [];
+        return hosts.map((host) => ({
           ip: host.ip,
-          label: host.name,
-          name: String(host.name || "").toLowerCase(),
-          switch: Number(host.switch),
-          service: host.role === "server" ? "server" : "client"
+          name: host.label || host.name,
+          switch: String(host.switch),
+          role: host.service === "server" ? "server" : "client"
         }));
       }
 
-      function stateWithExpectedTopology(state) {
-        return {
-          ...(state || lastState),
-          topology: {
-            ...((state || lastState).topology || {}),
+      function activeTopologyModel() {
+        if (restartInProgress || !mininetRuntime.ok) {
+          return {
+            source: restartInProgress ? "Application de la configuration..." : "Apercu de la configuration sauvegardee",
             switches: configuredSwitches,
-            expected_hosts: expectedHostsForState()
-          }
-        };
-      }
-
-      function switchKey(value) {
-        const raw = String(value || "");
-        return raw.startsWith("s") ? raw.slice(1) : raw;
-      }
-
-      function stateWithMininetRuntime(state) {
-        const switches = {};
-        for (const item of mininetRuntime.switches || []) {
-          switches[switchKey(item)] = {status: "connected"};
+            hosts: expectedHosts,
+            onlineSwitches: new Set(),
+            onlineHosts: new Set(),
+            preview: true
+          };
         }
 
-        const hosts = {};
-        for (const [name, host] of Object.entries(mininetRuntime.hosts || {})) {
-          if (host && host.ip) {
-            hosts[host.ip] = {name: String(name).toUpperCase(), mac: host.mac || "", switch: host.switch || ""};
-          }
-        }
-
+        const switches = mininetRuntime.switches.map((value) => String(value).replace(/^s/, ""));
+        const runtimeHosts = topologyHostsFromMininet();
         return {
-          ...(state || lastState),
-          switches,
-          hosts,
-          topology: mininetRuntime.topology || (state || lastState).topology || {}
+          source: "Topologie reelle Mininet",
+          switches: Number((mininetRuntime.topology || {}).switches || switches.length || configuredSwitches),
+          hosts: runtimeHosts.length ? runtimeHosts : expectedHosts,
+          onlineSwitches: new Set(switches),
+          onlineHosts: new Set(Object.values(mininetRuntime.hosts || {}).map((host) => host.ip)),
+          preview: false
         };
       }
 
-      function mininetMatchesConfig() {
-        return mininetRuntime.ok
-          && mininetRuntime.switchCount === configuredSwitches
-          && mininetRuntime.hostCount === expectedHosts.length;
+      function commandHosts(command) {
+        const lower = command.toLowerCase();
+        const hosts = activeTopologyModel().hosts;
+        if (lower === "pingall") return hosts.map((host) => host.ip);
+        return hosts.filter((host) => {
+          const name = String(host.name || "").toLowerCase();
+          return lower.includes(host.ip) || (name && lower.includes(name));
+        }).map((host) => host.ip);
       }
 
-      function topologyStateForDisplay(state) {
-        if (topologyApplying || isTopologyOverrideActive()) return stateWithExpectedTopology(state);
-        if (mininetRuntime.ok && mininetRuntime.topology) return stateWithMininetRuntime(state);
-        return state || lastState;
-      }
-
-      function showExpectedTopologyNow() {
-        topologyOverrideUntil = Date.now() + 30000;
-        renderTopology(stateWithExpectedTopology(lastState));
+      function showActivity(command, status) {
+        activeCommand = {
+          command,
+          status,
+          hosts: commandHosts(command),
+          until: Date.now() + (status === "running" ? 12000 : 6000)
+        };
+        renderTopology();
       }
 
       async function loadTopologyConfig() {
@@ -494,9 +430,10 @@
           document.getElementById("cfgHostsPerSwitch").value = Number(topology.hosts_per_switch || 2);
           document.getElementById("cfgTopologyType").value = topology.type || "linear";
           status.textContent = "Configuration chargee.";
-          renderTopology(topologyStateForDisplay(lastState));
+          renderTopology();
         } catch (error) {
           status.textContent = "Configuration indisponible.";
+          status.className = "note dangerText";
         }
       }
 
@@ -509,19 +446,16 @@
         };
 
         status.textContent = "Sauvegarde en cours...";
+        status.className = "note";
         try {
           await fetchJson("/api/topology-config", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(payload)
           });
-          status.textContent = "Configuration sauvegardee. Redemarrage de Mininet...";
-          status.className = "note";
           await loadTopologyConfig();
-          topologyApplying = true;
-          showExpectedTopologyNow();
-          switchPage("topology");
-          await restartTopology();
+          status.textContent = "Configuration sauvegardee. Clique sur Relancer Mininet pour appliquer.";
+          status.className = "note okText";
         } catch (error) {
           status.textContent = "Erreur : " + error.message;
           status.className = "note dangerText";
@@ -530,55 +464,120 @@
 
       async function restartTopology() {
         const status = document.getElementById("topologyConfigStatus");
-        status.textContent = "Redemarrage controle de Mininet en cours...";
+        restartInProgress = true;
+        switchPage("topology");
+        renderTopology();
+        status.textContent = "Nettoyage Mininet et relance de la topologie...";
         status.className = "note";
-        topologyApplying = true;
-        showExpectedTopologyNow();
+
         try {
-          const result = await fetchJson("/api/mininet/restart", {
+          await fetchJson("/api/mininet/restart", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({})
           });
-          status.textContent = "Mininet relance. Actualisation de la topologie...";
+          status.textContent = "Mininet relance. Verification de l'etat reel...";
           status.className = "note okText";
           await waitForMininetRefresh();
         } catch (error) {
-          topologyApplying = false;
-          topologyOverrideUntil = 0;
           status.textContent = "Redemarrage impossible : " + error.message;
           status.className = "note dangerText";
+        } finally {
+          restartInProgress = false;
+          await refresh();
         }
       }
 
       async function waitForMininetRefresh() {
         for (let attempt = 0; attempt < 40; attempt++) {
-          await refresh();
-          const status = document.getElementById("mininetStatus");
-          if (status.classList.contains("ok") && mininetMatchesConfig()) return;
+          await refreshMininetStatus();
+          if (mininetRuntime.ok) return;
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
       }
 
-      function commandHosts(command) {
-        const lower = command.toLowerCase();
-        if (lower === "pingall") return expectedHosts.map((host) => host.ip);
-        const found = [];
-        for (const host of expectedHosts) {
-          const names = [host.ip, String(host.name || "").toLowerCase()];
-          if (names.some((name) => name && lower.includes(name.toLowerCase()))) found.push(host.ip);
+      async function refreshMininetStatus() {
+        const status = document.getElementById("mininetStatus");
+        if (restartInProgress) {
+          status.textContent = "Redemarrage Mininet en cours";
+          status.className = "statusPill warn";
         }
-        return found;
+
+        try {
+          const result = await fetchJson("/api/mininet/status");
+          mininetRuntime = {
+            ok: true,
+            switches: result.switches || [],
+            hosts: result.hosts || {},
+            topology: result.topology || null
+          };
+          if (!restartInProgress) {
+            status.textContent = `Mininet actif - ${mininetRuntime.switches.length} switches - ${Object.keys(mininetRuntime.hosts).length} hotes`;
+            status.className = "statusPill ok";
+          }
+        } catch (error) {
+          mininetRuntime = {ok: false, switches: [], hosts: {}, topology: null};
+          if (!restartInProgress) {
+            status.textContent = "Mininet indisponible";
+            status.className = "statusPill danger";
+          }
+        }
       }
 
-      function showActivity(command, status) {
-        activeCommand = {
-          command,
-          status,
-          hosts: commandHosts(command),
-          until: Date.now() + (status === "running" ? 12000 : 6000)
-        };
-        renderTopology(lastState);
+      function renderTopology() {
+        const map = document.getElementById("topologyMap");
+        const activity = document.getElementById("topologyActivity");
+        const source = document.getElementById("topologySource");
+        const model = activeTopologyModel();
+
+        source.textContent = model.source;
+        if (model.preview) source.className = "panelHint warnText";
+        else source.className = "panelHint okText";
+
+        const active = activeCommand && activeCommand.until > Date.now();
+        const activeHosts = new Set(active ? activeCommand.hosts : []);
+        if (active) {
+          activity.className = "activity " + activeCommand.status;
+          activity.textContent = `${activeCommand.status === "running" ? "En cours" : "Termine"} - ${activeCommand.command}`;
+        } else {
+          activity.className = "activity hidden";
+          activity.textContent = "";
+        }
+
+        map.innerHTML = "";
+        const controller = document.createElement("div");
+        controller.className = "node controller" + (active ? " activeCommand" : "");
+        controller.innerHTML = "<span>Controleur</span><strong>Ryu</strong><small>Plan de controle</small>";
+        map.appendChild(controller);
+
+        const switchRow = document.createElement("div");
+        switchRow.className = "switchRow";
+        for (let sw = 1; sw <= Number(model.switches || 0); sw++) {
+          const swKey = String(sw);
+          const hosts = model.hosts.filter((host) => String(host.switch) === swKey);
+          const group = document.createElement("div");
+          group.className = "switchGroup";
+          group.style.setProperty("--host-count", String(hosts.length));
+
+          const isOnline = model.onlineSwitches.has(swKey);
+          const switchNode = document.createElement("div");
+          switchNode.className = "node switch" + (isOnline ? " online" : "");
+          switchNode.innerHTML = `<span>Switch</span><strong>S${sw}</strong><small>${isOnline ? "connecte" : "attendu"}</small>`;
+          group.appendChild(switchNode);
+
+          for (const host of hosts) {
+            const detected = model.onlineHosts.has(host.ip);
+            const hostNode = document.createElement("div");
+            hostNode.className = "node host"
+              + (detected ? " online" : "")
+              + (host.role === "server" ? " server" : "")
+              + (activeHosts.has(host.ip) ? " activeCommand" : "");
+            hostNode.innerHTML = `<span>${host.role === "server" ? "Service" : "Hote"}</span><strong>${html(host.name)}</strong><small>${host.ip}</small>`;
+            group.appendChild(hostNode);
+          }
+          switchRow.appendChild(group);
+        }
+        map.appendChild(switchRow);
       }
 
       async function runMininetCommand(command) {
@@ -602,105 +601,9 @@
           showActivity(value, result.ok ? "done" : "error");
           await refresh();
         } catch (error) {
-          output.textContent = "$ " + value + "\n\nMininet ne repond pas. Verifier sudo ./scripts/run_topology.sh.";
+          output.textContent = "$ " + value + "\n\nMininet ne repond pas. Relance la topologie depuis la page Topologie.";
           showActivity(value, "error");
         }
-      }
-
-      async function refreshMininetStatus() {
-        const status = document.getElementById("mininetStatus");
-        try {
-          const result = await fetchJson("/api/mininet/status");
-          mininetRuntime = {
-            ok: true,
-            switchCount: (result.switches || []).length,
-            hostCount: Object.keys(result.hosts || {}).length,
-            switches: result.switches || [],
-            hosts: result.hosts || {},
-            topology: result.topology || null
-          };
-
-          if (topologyApplying && !mininetMatchesConfig()) {
-            status.textContent = `Application en cours - cible ${configuredSwitches} switches - ${expectedHosts.length} hotes`;
-            status.className = "statusPill warn";
-            return;
-          }
-
-          status.textContent = `Mininet actif - ${mininetRuntime.switchCount} switches - ${mininetRuntime.hostCount} hotes`;
-          status.className = "statusPill ok";
-        } catch (error) {
-          mininetRuntime = {ok: false, switchCount: 0, hostCount: 0, switches: [], hosts: {}, topology: null};
-          if (topologyApplying) {
-            status.textContent = `Redemarrage en cours - cible ${configuredSwitches} switches - ${expectedHosts.length} hotes`;
-            status.className = "statusPill warn";
-          } else {
-            status.textContent = "Mininet indisponible";
-            status.className = "statusPill danger";
-          }
-        }
-      }
-
-      function renderTopology(state) {
-        lastState = state || {switches: {}, hosts: {}, topology: {}};
-        const map = document.getElementById("topologyMap");
-        const activity = document.getElementById("topologyActivity");
-        const switches = Object.keys(lastState.switches || {}).sort((a, b) => Number(a) - Number(b));
-        const detectedHosts = lastState.hosts || {};
-        const topology = lastState.topology || {};
-
-        if (Array.isArray(topology.expected_hosts) && topology.expected_hosts.length) {
-          expectedHosts = topology.expected_hosts.map((host) => ({
-            ip: host.ip,
-            name: host.label || host.name,
-            switch: String(host.switch),
-            role: host.service === "http" || host.service === "server" ? "server" : "client"
-          }));
-        }
-        configuredSwitches = Number(topology.switches || configuredSwitches || 2);
-
-        const active = activeCommand && activeCommand.until > Date.now();
-        const activeHosts = new Set(active ? activeCommand.hosts : []);
-        if (active) {
-          activity.className = "activity " + activeCommand.status;
-          activity.textContent = `${activeCommand.status === "running" ? "En cours" : "Termine"} - ${activeCommand.command}`;
-        } else {
-          activity.className = "activity hidden";
-          activity.textContent = "";
-        }
-
-        map.innerHTML = "";
-        const controller = document.createElement("div");
-        controller.className = "node controller" + (active ? " activeCommand" : "");
-        controller.innerHTML = "<span>Controleur</span><strong>Ryu</strong><small>Plan de controle</small>";
-        map.appendChild(controller);
-
-        const switchCount = Number(configuredSwitches || 2);
-        const switchRow = document.createElement("div");
-        switchRow.className = "switchRow";
-        for (let sw = 1; sw <= switchCount; sw++) {
-          const swKey = String(sw);
-          const group = document.createElement("div");
-          group.className = "switchGroup";
-          group.style.setProperty("--host-count", String(expectedHosts.filter((host) => String(host.switch) === swKey).length));
-          const switchNode = document.createElement("div");
-          switchNode.className = "node switch" + (switches.includes(swKey) ? " online" : "");
-          switchNode.innerHTML = `<span>Switch</span><strong>S${sw}</strong><small>${switches.includes(swKey) ? "connecte" : "attendu"}</small>`;
-          group.appendChild(switchNode);
-
-          const hosts = expectedHosts.filter((host) => String(host.switch) === swKey);
-          for (const host of hosts) {
-            const detected = Boolean(detectedHosts[host.ip]);
-            const hostNode = document.createElement("div");
-            hostNode.className = "node host"
-              + (detected ? " online" : "")
-              + (host.role === "server" ? " server" : "")
-              + (activeHosts.has(host.ip) ? " activeCommand" : "");
-            hostNode.innerHTML = `<span>${host.role === "server" ? "Service" : "Hote"}</span><strong>${html(host.name)}</strong><small>${host.ip}</small>`;
-            group.appendChild(hostNode);
-          }
-          switchRow.appendChild(group);
-        }
-        map.appendChild(switchRow);
       }
 
       function renderRules(rules) {
@@ -747,7 +650,6 @@
           status.className = "note dangerText";
           return;
         }
-
         if (!isValidIp(payload.src_ip) || !isValidIp(payload.dst_ip)) {
           status.textContent = "Adresse IP invalide.";
           status.className = "note dangerText";
@@ -845,29 +747,23 @@
         await refreshMininetStatus();
         try {
           const state = await fetchJson("/api/state");
+          controllerState = state;
           const rules = state.rules || [];
           const flows = state.flows || [];
           const events = state.events || [];
           const summary = state.summary || {};
-          if (mininetMatchesConfig()) {
-            topologyApplying = false;
-            topologyOverrideUntil = 0;
-          }
 
           document.getElementById("apiStatus").textContent = "Ryu actif";
           document.getElementById("apiStatusDot").className = "dot ok";
           document.getElementById("uptime").textContent = "Uptime: " + fmtSeconds(state.uptime_seconds || 0);
-          document.getElementById("switchCount").textContent = Object.keys(state.switches || {}).length;
-          document.getElementById("hostCount").textContent = Object.keys(state.hosts || {}).length;
+          document.getElementById("switchCount").textContent = mininetRuntime.ok ? mininetRuntime.switches.length : Object.keys(state.switches || {}).length;
+          document.getElementById("hostCount").textContent = mininetRuntime.ok ? Object.keys(mininetRuntime.hosts || {}).length : Object.keys(state.hosts || {}).length;
           document.getElementById("flowCount").textContent = flows.length;
           document.getElementById("blockedCount").textContent = summary.blocked_flows || 0;
-          document.getElementById("allowedPackets").textContent = summary.allowed_packets || 0;
-          document.getElementById("blockedPackets").textContent = summary.blocked_packets || 0;
           document.getElementById("packetInCount").textContent = summary.packet_in_count || 0;
           document.getElementById("flowModCount").textContent = summary.flow_mod_count || 0;
-          document.getElementById("lastRule").textContent = "Derniere regle : " + (summary.last_rule || "aucune");
 
-          renderTopology(topologyStateForDisplay(state));
+          renderTopology();
           renderRules(rules);
           renderEvents(events);
           renderFlows(flows);
@@ -876,7 +772,7 @@
           document.getElementById("apiStatus").textContent = "Ryu indisponible";
           document.getElementById("apiStatusDot").className = "dot bad";
           document.getElementById("uptime").textContent = "Verifier ./scripts/run_controller.sh";
-          renderTopology(lastState);
+          renderTopology();
           renderRules([]);
           renderEvents([]);
           renderFlows([]);
@@ -901,7 +797,7 @@
       switchPage((window.location.hash || "#overview").replace("#", ""));
       loadTopologyConfig();
       refresh();
-      setInterval(refresh, 750);
+      setInterval(refresh, 1000);
     </script>
   </body>
 </html>

@@ -324,8 +324,19 @@ select {
   color: var(--ok);
 }
 
+.warnText {
+  color: var(--warn);
+}
+
 .dangerText {
   color: var(--danger);
+}
+
+.panelHint {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
 }
 
 .lastRule {
