@@ -327,6 +327,7 @@
       let configuredSwitches = 2;
       let lastState = {switches: {}, hosts: {}, topology: {}};
       let activeCommand = null;
+      let topologyOverrideUntil = 0;
 
       async function fetchJson(url, options) {
         const response = await fetch(url, options);
@@ -411,6 +412,36 @@
         return hosts;
       }
 
+      function isTopologyOverrideActive() {
+        return Date.now() < topologyOverrideUntil;
+      }
+
+      function expectedHostsForState() {
+        return expectedHosts.map((host) => ({
+          ip: host.ip,
+          label: host.name,
+          name: String(host.name || "").toLowerCase(),
+          switch: Number(host.switch),
+          service: host.role === "server" ? "server" : "client"
+        }));
+      }
+
+      function stateWithExpectedTopology(state) {
+        return {
+          ...(state || lastState),
+          topology: {
+            ...((state || lastState).topology || {}),
+            switches: configuredSwitches,
+            expected_hosts: expectedHostsForState()
+          }
+        };
+      }
+
+      function showExpectedTopologyNow() {
+        topologyOverrideUntil = Date.now() + 30000;
+        renderTopology(stateWithExpectedTopology(lastState));
+      }
+
       async function loadTopologyConfig() {
         const status = document.getElementById("topologyConfigStatus");
         try {
@@ -423,7 +454,7 @@
           document.getElementById("cfgHostsPerSwitch").value = Number(topology.hosts_per_switch || 2);
           document.getElementById("cfgTopologyType").value = topology.type || "linear";
           status.textContent = "Configuration chargee.";
-          renderTopology(lastState);
+          renderTopology(stateWithExpectedTopology(lastState));
         } catch (error) {
           status.textContent = "Configuration indisponible.";
         }
@@ -447,6 +478,8 @@
           status.textContent = "Configuration sauvegardee. Redemarrage de Mininet...";
           status.className = "note";
           await loadTopologyConfig();
+          showExpectedTopologyNow();
+          switchPage("topology");
           await restartTopology();
         } catch (error) {
           status.textContent = "Erreur : " + error.message;
@@ -750,6 +783,13 @@
           const flows = state.flows || [];
           const events = state.events || [];
           const summary = state.summary || {};
+          const realTopologyMatchesConfig =
+            Object.keys(state.switches || {}).length === configuredSwitches &&
+            Object.keys(state.hosts || {}).length === expectedHosts.length;
+
+          if (realTopologyMatchesConfig) {
+            topologyOverrideUntil = 0;
+          }
 
           document.getElementById("apiStatus").textContent = "Ryu actif";
           document.getElementById("apiStatusDot").className = "dot ok";
@@ -764,7 +804,7 @@
           document.getElementById("flowModCount").textContent = summary.flow_mod_count || 0;
           document.getElementById("lastRule").textContent = "Derniere regle : " + (summary.last_rule || "aucune");
 
-          renderTopology(state);
+          renderTopology(isTopologyOverrideActive() ? stateWithExpectedTopology(state) : state);
           renderRules(rules);
           renderEvents(events);
           renderFlows(flows);
