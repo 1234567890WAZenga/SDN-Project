@@ -167,7 +167,7 @@ def restart_mininet():
             cwd=str(BASE_DIR),
             capture_output=True,
             text=True,
-            timeout=40,
+            timeout=90,
         )
     except subprocess.TimeoutExpired:
         return jsonify(

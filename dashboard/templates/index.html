@@ -507,11 +507,11 @@
       }
 
       async function waitForMininetRefresh() {
-        for (let attempt = 0; attempt < 12; attempt++) {
+        for (let attempt = 0; attempt < 40; attempt++) {
           await refresh();
           const status = document.getElementById("mininetStatus");
           if (status.classList.contains("ok")) return;
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 250));
         }
       }
 
@@ -838,7 +838,7 @@
       switchPage((window.location.hash || "#overview").replace("#", ""));
       loadTopologyConfig();
       refresh();
-      setInterval(refresh, 1000);
+      setInterval(refresh, 750);
     </script>
   </body>
 </html>
