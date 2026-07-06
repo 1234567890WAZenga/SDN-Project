@@ -127,6 +127,7 @@ STATE = {
         "packet_in_count": 0,
         "flow_mod_count": 0,
         "last_rule": None,
+        "last_action": None,
         "by_switch": {},
         "by_protocol": {},
         "top_flows": [],
@@ -168,6 +169,10 @@ def add_event(message, event_type="info", meta=None):
             summary["flow_mod_count"] = int(summary.get("flow_mod_count") or 0) + 1
         elif event_type in {"policy_create", "policy_toggle", "policy_delete"}:
             summary["last_rule"] = message
+
+        last_action = action_from_event(event_type, message, meta or {})
+        if last_action:
+            summary["last_action"] = last_action
 
 
 def load_rules():
@@ -263,6 +268,46 @@ def host_label(ip_address):
     return HOST_NAMES.get(ip_address, ip_address)
 
 
+def action_from_event(event_type, message, meta):
+    """
+    Construit une action SDN courte et lisible pour le dashboard.
+    """
+
+    tracked_events = {
+        "packet_in": "PACKET-IN",
+        "decision": "ALLOW",
+        "flow_mod": "ALLOW",
+        "flow_blocked": "DROP",
+        "policy_create": "POLICY",
+        "policy_toggle": "POLICY",
+    }
+
+    if event_type not in tracked_events:
+        return None
+
+    src_ip = (meta or {}).get("src_ip")
+    dst_ip = (meta or {}).get("dst_ip")
+    switch_id = (meta or {}).get("switch")
+    proto = str((meta or {}).get("proto") or "any").upper()
+    decision = str((meta or {}).get("decision") or tracked_events[event_type]).upper()
+
+    if event_type == "decision" and decision == "FLOOD":
+        decision = "FLOOD"
+
+    return {
+        "time": time.strftime("%H:%M:%S"),
+        "type": event_type,
+        "src_ip": src_ip,
+        "dst_ip": dst_ip,
+        "src_name": host_label(src_ip),
+        "dst_name": host_label(dst_ip),
+        "proto": proto,
+        "decision": decision,
+        "switch": switch_id,
+        "message": message,
+    }
+
+
 def build_summary(flows, previous_history=None):
     """
     Agrege les flux pour alimenter les graphiques du dashboard.
@@ -325,6 +370,7 @@ def build_summary(flows, previous_history=None):
         "packet_in_count": int(STATE.get("summary", {}).get("packet_in_count") or 0),
         "flow_mod_count": int(STATE.get("summary", {}).get("flow_mod_count") or 0),
         "last_rule": STATE.get("summary", {}).get("last_rule"),
+        "last_action": STATE.get("summary", {}).get("last_action"),
         "by_switch": by_switch,
         "by_protocol": by_protocol,
         "top_flows": top_flows,
@@ -421,9 +467,16 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
 
                     status = "activee" if rule["enabled"] else "desactivee"
                     add_event(
-                        f"Politique dynamique : {rule_id} -> {status}",
+                        f"Politique SDN {status} : {host_label(rule.get('src_ip'))} -> {host_label(rule.get('dst_ip'))}",
                         "policy_toggle",
-                        {"rule_id": rule_id, "enabled": rule["enabled"]},
+                        {
+                            "rule_id": rule_id,
+                            "enabled": rule["enabled"],
+                            "src_ip": rule.get("src_ip"),
+                            "dst_ip": rule.get("dst_ip"),
+                            "proto": rule.get("proto", "any"),
+                            "decision": "DROP" if rule.get("action") == "deny" else "ALLOW",
+                        },
                     )
 
                     break
@@ -468,9 +521,15 @@ class DashboardApiHandler(BaseHTTPRequestHandler):
                 STATE["rules"] = rules
 
             add_event(
-                f"Nouvelle politique {new_rule['action']} : {new_rule['description']} ({host_label(new_rule.get('src_ip'))} -> {host_label(new_rule.get('dst_ip'))})",
+                f"Nouvelle regle SDN : {host_label(new_rule.get('src_ip'))} -> {host_label(new_rule.get('dst_ip'))} | {new_rule.get('proto', 'any').upper()} | {'DROP' if new_rule.get('action') == 'deny' else 'ALLOW'}",
                 "policy_create",
-                {"rule_id": new_rule["id"]},
+                {
+                    "rule_id": new_rule["id"],
+                    "src_ip": new_rule.get("src_ip"),
+                    "dst_ip": new_rule.get("dst_ip"),
+                    "proto": new_rule.get("proto", "any"),
+                    "decision": "DROP" if new_rule.get("action") == "deny" else "ALLOW",
+                },
             )
 
             if CONTROLLER_APP:
@@ -752,7 +811,7 @@ class SdnController(app_manager.RyuApp):
                     cookie=1,
                 )
                 add_event(
-                    f"Flux bloque par politique sur S{dp.id} : {host_label(rule.get('src_ip'))} -> {host_label(rule.get('dst_ip'))}",
+                    f"Flux bloque : {host_label(rule.get('src_ip'))} -> {host_label(rule.get('dst_ip'))} | {proto.upper()} | DROP sur S{dp.id}",
                     "flow_blocked",
                     {
                         "switch": dp.id,
@@ -760,6 +819,7 @@ class SdnController(app_manager.RyuApp):
                         "src_ip": rule.get("src_ip"),
                         "dst_ip": rule.get("dst_ip"),
                         "proto": proto,
+                        "decision": "DROP",
                     },
                 )
 
@@ -817,6 +877,7 @@ class SdnController(app_manager.RyuApp):
         if ip_pkt:
             src_ip = ip_pkt.src
             dst_ip = ip_pkt.dst
+            packet_proto = ip_proto_name(ip_pkt.proto)
             with STATE_LOCK:
                 STATE["hosts"][ip_pkt.src] = {
                     "name": host_label(ip_pkt.src),
@@ -836,6 +897,7 @@ class SdnController(app_manager.RyuApp):
         elif arp_pkt:
             src_ip = arp_pkt.src_ip
             dst_ip = arp_pkt.dst_ip
+            packet_proto = "arp"
             with STATE_LOCK:
                 STATE["hosts"][arp_pkt.src_ip] = {
                     "name": host_label(arp_pkt.src_ip),
@@ -851,14 +913,24 @@ class SdnController(app_manager.RyuApp):
                     {"ip": arp_pkt.src_ip, "switch": dpid, "port": in_port},
                 )
 
+        else:
+            packet_proto = "ethernet"
+
         packet_key = (dpid, src_ip or src, dst_ip or dst)
         now = time.time()
         if now - self.recent_packet_events.get(packet_key, 0) > 3:
             self.recent_packet_events[packet_key] = now
             add_event(
-                f"Packet-In recu depuis S{dpid} : {host_label(src_ip)} -> {host_label(dst_ip)}",
+                f"Packet-In recu : {host_label(src_ip)} -> {host_label(dst_ip)} sur S{dpid}",
                 "packet_in",
-                {"switch": dpid, "src_ip": src_ip, "dst_ip": dst_ip, "in_port": in_port},
+                {
+                    "switch": dpid,
+                    "src_ip": src_ip,
+                    "dst_ip": dst_ip,
+                    "in_port": in_port,
+                    "proto": packet_proto,
+                    "decision": "PACKET-IN",
+                },
             )
 
         # Trouver le port de sortie
@@ -867,9 +939,16 @@ class SdnController(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(out_port)]
         decision = "flood" if out_port == ofproto.OFPP_FLOOD else "autoriser"
         add_event(
-            f"Decision du controleur : {decision} {host_label(src_ip)} -> {host_label(dst_ip)} sur S{dpid}",
+            f"Decision : {decision} {host_label(src_ip)} -> {host_label(dst_ip)} sur S{dpid}",
             "decision",
-            {"switch": dpid, "src_ip": src_ip, "dst_ip": dst_ip, "out_port": out_port},
+            {
+                "switch": dpid,
+                "src_ip": src_ip,
+                "dst_ip": dst_ip,
+                "out_port": out_port,
+                "proto": packet_proto,
+                "decision": "FLOOD" if out_port == ofproto.OFPP_FLOOD else "ALLOW",
+            },
         )
 
         # Installer un flux temporaire si la destination est connue
@@ -897,9 +976,16 @@ class SdnController(app_manager.RyuApp):
                 idle_timeout=30,
             )
             add_event(
-                f"Flow-Mod installe sur S{dpid} : {host_label(src_ip)} -> {host_label(dst_ip)} via port {out_port}",
+                f"Flow-Mod installe sur S{dpid} : {host_label(src_ip)} -> {host_label(dst_ip)} | {packet_proto.upper()} | ALLOW",
                 "flow_mod",
-                {"switch": dpid, "src_ip": src_ip, "dst_ip": dst_ip, "out_port": out_port},
+                {
+                    "switch": dpid,
+                    "src_ip": src_ip,
+                    "dst_ip": dst_ip,
+                    "out_port": out_port,
+                    "proto": packet_proto,
+                    "decision": "ALLOW",
+                },
             )
 
         # Envoyer le paquet

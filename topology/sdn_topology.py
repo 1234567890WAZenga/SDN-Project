@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import contextlib
-import io
 import json
 import os
 import shlex
@@ -105,6 +103,93 @@ def clean_ip(value):
     return str(value).split("/")[0]
 
 
+def host_sort_key(name):
+    if name.startswith("h") and name[1:].isdigit():
+        return int(name[1:])
+    return name
+
+
+def ping_once(src_host, dst_host):
+    dst_ip = node_ip(dst_host)
+    result = src_host.cmd(f"ping -c 1 -W 1 {shlex.quote(dst_ip)} >/dev/null 2>&1; echo $?")
+    return result.strip().splitlines()[-1:] == ["0"]
+
+
+def execute_pingall(hosts):
+    host_names = sorted(hosts.keys(), key=host_sort_key)
+    success = 0
+    failed = 0
+    failures = []
+    output_lines = ["*** Ping: testing ping reachability"]
+
+    for src_name in host_names:
+        row = []
+        for dst_name in host_names:
+            if src_name == dst_name:
+                continue
+
+            src_host = hosts[src_name]
+            dst_host = hosts[dst_name]
+            if ping_once(src_host, dst_host):
+                success += 1
+                row.append(dst_name)
+            else:
+                failed += 1
+                row.append("X")
+                failures.append(
+                    {
+                        "src": src_name.upper(),
+                        "dst": dst_name.upper(),
+                        "src_ip": node_ip(src_host),
+                        "dst_ip": node_ip(dst_host),
+                    }
+                )
+
+        output_lines.append(f"{src_name} -> {' '.join(row)}")
+
+    total = success + failed
+    loss = round((failed * 100 / total), 1) if total else 0
+    output_lines.append(f"*** Results: {loss}% dropped ({success}/{total} received)")
+
+    return {
+        "output": "\n".join(output_lines),
+        "summary": {
+            "type": "pingall",
+            "command": "pingall",
+            "success": success,
+            "failed": failed,
+            "total": total,
+            "loss_percent": loss,
+            "failures": failures[:40],
+            "message": f"pingall : {success}/{total} communications reussies",
+        },
+    }
+
+
+def extract_ping_target(rest, hosts):
+    try:
+        tokens = shlex.split(rest)
+    except ValueError:
+        return None
+
+    if not tokens or tokens[0] != "ping":
+        return None
+
+    for token in reversed(tokens[1:]):
+        if token in hosts:
+            return {
+                "name": token.upper(),
+                "ip": node_ip(hosts[token]),
+            }
+        if token.count(".") == 3:
+            return {
+                "name": token,
+                "ip": token,
+            }
+
+    return None
+
+
 def make_command_handler(net, hosts, switches, hosts_config, switch_count):
     class MininetCommandHandler(BaseHTTPRequestHandler):
         def _json(self, payload, status=200):
@@ -182,8 +267,11 @@ def make_command_handler(net, hosts, switches, hosts_config, switch_count):
                 return
 
             try:
-                output = execute_mininet_command(command, net, hosts, switches)
-                response = {"ok": True, "command": command, "output": output}
+                result = execute_mininet_command(command, net, hosts, switches)
+                if isinstance(result, dict):
+                    response = {"ok": True, "command": command, **result}
+                else:
+                    response = {"ok": True, "command": command, "output": result}
                 status = 200
             except Exception as error:
                 response = {"ok": False, "command": command, "error": str(error)}
@@ -199,11 +287,7 @@ def make_command_handler(net, hosts, switches, hosts_config, switch_count):
 
 def execute_mininet_command(command, net, hosts, switches):
     if command == "pingall":
-        buffer = io.StringIO()
-        with contextlib.redirect_stdout(buffer):
-            loss = net.pingAll()
-        output = buffer.getvalue()
-        return output + f"\nPacket loss: {loss}%"
+        return execute_pingall(hosts)
 
     if command == "nodes":
         return " ".join(sorted(net.nameToNode.keys()))
@@ -227,6 +311,7 @@ def execute_mininet_command(command, net, hosts, switches):
     if first in hosts:
         if not rest:
             return f"{first}: no host command provided"
+        ping_target = extract_ping_target(rest, hosts)
         translated = translate_host_names(rest, hosts)
         process = hosts[first].popen(translated, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         try:
@@ -235,7 +320,32 @@ def execute_mininet_command(command, net, hosts, switches):
             process.kill()
             output, _ = process.communicate()
             output += "\nCommand timeout after 25 seconds."
-        return output.strip() or "(no output)"
+        clean_output = output.strip() or "(no output)"
+
+        if rest.strip().startswith("ping "):
+            success = process.returncode == 0
+            src_label = first.upper()
+            dst_label = ping_target["name"] if ping_target else "destination"
+            summary = {
+                "type": "ping",
+                "command": command,
+                "success": 1 if success else 0,
+                "failed": 0 if success else 1,
+                "total": 1,
+                "loss_percent": 0 if success else 100,
+                "failures": [] if success else [
+                    {
+                        "src": src_label,
+                        "dst": dst_label,
+                        "src_ip": node_ip(hosts[first]),
+                        "dst_ip": ping_target.get("ip") if ping_target else "",
+                    }
+                ],
+                "message": f"{src_label} -> {dst_label} : {'communication reussie' if success else 'communication bloquee'}",
+            }
+            return {"output": clean_output, "summary": summary}
+
+        return clean_output
 
     if first == "sh":
         if not rest:

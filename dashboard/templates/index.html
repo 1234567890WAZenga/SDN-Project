@@ -76,6 +76,31 @@
             </article>
           </div>
 
+          <div class="gridTwo">
+            <article class="panel">
+              <div class="panelTitle">
+                <div>
+                  <span class="sectionLabel">Action SDN</span>
+                  <h3>Derniere decision observee</h3>
+                </div>
+              </div>
+              <div id="lastActionCard" class="lastActionCard">
+                <strong>Aucune action observee</strong>
+                <span>Genere du trafic avec un test Mininet pour voir la decision du controleur.</span>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panelTitle">
+                <div>
+                  <span class="sectionLabel">Statistiques</span>
+                  <h3>Flux autorises et bloques</h3>
+                </div>
+              </div>
+              <div id="flowChart" class="flowChart"></div>
+            </article>
+          </div>
+
           <article class="panel">
             <div class="panelTitle">
               <div>
@@ -172,6 +197,10 @@
                 <span>Preuve OpenFlow</span>
                 <button class="commandBtn" data-command="sh ovs-ofctl dump-flows s1 -O OpenFlow13">Flows S1</button>
               </div>
+            </div>
+            <div id="testSummary" class="testSummary">
+              <strong>Aucun test execute</strong>
+              <span>Lance pingall ou un ping entre deux hotes pour voir le resultat.</span>
             </div>
             <div class="commandRow">
               <input id="commandInput" type="text" value="h1 ping -c 4 h2">
@@ -294,6 +323,7 @@
       let mininetRuntime = {ok: false, switching: false, switches: [], hosts: {}, topology: null};
       let restartInProgress = false;
       let activeCommand = null;
+      let lastTestSummary = null;
 
       async function fetchJson(url, options) {
         const response = await fetch(url, options);
@@ -408,11 +438,26 @@
         }).map((host) => host.ip);
       }
 
-      function showActivity(command, status) {
+      function hostNameFromIp(ip) {
+        const host = activeTopologyModel().hosts.find((item) => item.ip === ip);
+        return host ? host.name : (ip || "*");
+      }
+
+      function failureHosts(summary) {
+        const hosts = [];
+        for (const failure of (summary || {}).failures || []) {
+          if (failure.src_ip) hosts.push(failure.src_ip);
+          if (failure.dst_ip) hosts.push(failure.dst_ip);
+        }
+        return hosts;
+      }
+
+      function showActivity(command, status, summary) {
         activeCommand = {
           command,
           status,
-          hosts: commandHosts(command),
+          hosts: [...new Set([...commandHosts(command), ...failureHosts(summary)])],
+          failures: failureHosts(summary),
           until: Date.now() + (status === "running" ? 12000 : 6000)
         };
         renderTopology();
@@ -536,6 +581,7 @@
 
         const active = activeCommand && activeCommand.until > Date.now();
         const activeHosts = new Set(active ? activeCommand.hosts : []);
+        const failedHosts = new Set(active ? activeCommand.failures || [] : []);
         if (active) {
           activity.className = "activity " + activeCommand.status;
           activity.textContent = `${activeCommand.status === "running" ? "En cours" : "Termine"} - ${activeCommand.command}`;
@@ -571,7 +617,8 @@
             hostNode.className = "node host"
               + (detected ? " online" : "")
               + (host.role === "server" ? " server" : "")
-              + (activeHosts.has(host.ip) ? " activeCommand" : "");
+              + (activeHosts.has(host.ip) ? " activeCommand" : "")
+              + (failedHosts.has(host.ip) ? " failedCommand" : "");
             hostNode.innerHTML = `<span>${host.role === "server" ? "Service" : "Hote"}</span><strong>${html(host.name)}</strong><small>${host.ip}</small>`;
             group.appendChild(hostNode);
           }
@@ -598,10 +645,25 @@
             body: JSON.stringify({command: value})
           });
           output.textContent = "$ " + value + "\n\n" + (result.output || result.error || "(aucune sortie)");
-          showActivity(value, result.ok ? "done" : "error");
+          if (result.summary) {
+            lastTestSummary = result.summary;
+            renderTestSummary(result.summary);
+          }
+          const commandStatus = result.summary && Number(result.summary.failed || 0) > 0 ? "error" : (result.ok ? "done" : "error");
+          showActivity(value, commandStatus, result.summary);
           await refresh();
         } catch (error) {
           output.textContent = "$ " + value + "\n\nMininet ne repond pas. Relance la topologie depuis la page Topologie.";
+          lastTestSummary = {
+            type: "error",
+            command: value,
+            success: 0,
+            failed: 1,
+            total: 1,
+            message: "Commande impossible : Mininet ne repond pas",
+            failures: []
+          };
+          renderTestSummary(lastTestSummary);
           showActivity(value, "error");
         }
       }
@@ -690,12 +752,112 @@
         await refresh();
       }
 
+      function renderTestSummary(summary) {
+        const container = document.getElementById("testSummary");
+        if (!summary) {
+          container.className = "testSummary";
+          container.innerHTML = "<strong>Aucun test execute</strong><span>Lance pingall ou un ping entre deux hotes pour voir le resultat.</span>";
+          return;
+        }
+
+        const failed = Number(summary.failed || 0);
+        const total = Number(summary.total || 0);
+        const success = Number(summary.success || 0);
+        const stateClass = failed > 0 ? "danger" : "ok";
+        const failures = (summary.failures || []).slice(0, 8);
+        const failureText = failures.map((failure) => {
+          const src = failure.src || hostNameFromIp(failure.src_ip);
+          const dst = failure.dst || hostNameFromIp(failure.dst_ip);
+          return `<li>${html(src)} ne passe pas vers ${html(dst)}</li>`;
+        }).join("");
+        const details = failed > 0
+          ? `<ul>${failureText}${Number(summary.failed || 0) > failures.length ? `<li>+ ${Number(summary.failed) - failures.length} autres communications bloquees</li>` : ""}</ul>`
+          : "<span>Toutes les communications testees passent.</span>";
+
+        container.className = "testSummary " + stateClass;
+        container.innerHTML = `
+          <strong>${html(summary.message || `${success}/${total} communications reussies`)}</strong>
+          <span>${html(summary.command || "test")} - ${success}/${total} succes - ${failed} echec(s)</span>
+          ${details}
+        `;
+      }
+
+      function renderLastAction(summary, events) {
+        const container = document.getElementById("lastActionCard");
+        const action = (summary || {}).last_action || null;
+        if (!action) {
+          container.className = "lastActionCard";
+          container.innerHTML = "<strong>Aucune action observee</strong><span>Genere du trafic avec un test Mininet pour voir la decision du controleur.</span>";
+          return;
+        }
+
+        const decision = String(action.decision || "SDN").toUpperCase();
+        const src = action.src_name || hostNameFromIp(action.src_ip);
+        const dst = action.dst_name || hostNameFromIp(action.dst_ip);
+        const switchText = action.switch
+          ? (["flow_mod", "flow_blocked", "policy_create", "policy_toggle"].includes(action.type)
+              ? `regle appliquee sur S${action.switch}`
+              : action.type === "packet_in"
+                ? `paquet recu sur S${action.switch}`
+                : `decision sur S${action.switch}`)
+          : "controleur Ryu";
+        const cardClass = decision === "DROP" ? "drop" : (decision === "ALLOW" ? "allow" : "neutral");
+
+        container.className = "lastActionCard " + cardClass;
+        container.innerHTML = `
+          <strong>${html(src)} -> ${html(dst)}</strong>
+          <span>${html(String(action.proto || "ANY").toUpperCase())} | ${html(decision)} | ${html(switchText)}</span>
+          <small>${html(action.message || "")}</small>
+        `;
+      }
+
+      function renderFlowChart(summary) {
+        const container = document.getElementById("flowChart");
+        const allowed = Number((summary || {}).allowed_flows || 0);
+        const blocked = Number((summary || {}).blocked_flows || 0);
+        const total = allowed + blocked;
+        if (!total) {
+          container.innerHTML = "<p class='empty'>Aucun flux mesure pour le moment.</p>";
+          return;
+        }
+
+        const allowWidth = allowed ? Math.max(8, Math.round((allowed * 100) / total)) : 0;
+        const dropWidth = blocked ? Math.max(8, Math.round((blocked * 100) / total)) : 0;
+        container.innerHTML = `
+          <div class="chartNumbers">
+            <span><b>ALLOW</b><strong>${allowed}</strong></span>
+            <span><b>DROP</b><strong>${blocked}</strong></span>
+          </div>
+          <div class="chartBar">
+            <i class="allowBar" style="width:${allowWidth}%"></i>
+            <i class="dropBar" style="width:${dropWidth}%"></i>
+          </div>
+          <small>${total} flux OpenFlow observes</small>
+        `;
+      }
+
+      function eventLabel(type) {
+        const labels = {
+          switch_connected: "Switch",
+          host_detected: "Hote",
+          packet_in: "Packet-In",
+          decision: "Decision",
+          flow_mod: "Flow-Mod",
+          flow_blocked: "DROP",
+          policy_create: "Regle",
+          policy_toggle: "Regle",
+          policy_apply: "Politique",
+          api: "API"
+        };
+        return labels[type] || "Info";
+      }
+
       function eventMarkup(events, limit) {
         const latest = (events || []).slice(0, limit);
         if (!latest.length) return "<p class='empty'>Aucun evenement.</p>";
         return latest.map((event) => `
-          <div class="eventItem">
-            <span>${html(event.time)}</span>
+          <div class="eventItem event-${html(event.type || "info")}">
+            <span><b>${html(eventLabel(event.type))}</b>${html(event.time)}</span>
             <p>${html(event.message)}</p>
           </div>
         `).join("");
@@ -764,6 +926,9 @@
           document.getElementById("flowModCount").textContent = summary.flow_mod_count || 0;
 
           renderTopology();
+          renderLastAction(summary, events);
+          renderFlowChart(summary);
+          renderTestSummary(lastTestSummary);
           renderRules(rules);
           renderEvents(events);
           renderFlows(flows);
@@ -773,6 +938,9 @@
           document.getElementById("apiStatusDot").className = "dot bad";
           document.getElementById("uptime").textContent = "Verifier ./scripts/run_controller.sh";
           renderTopology();
+          renderLastAction({}, []);
+          renderFlowChart({});
+          renderTestSummary(lastTestSummary);
           renderRules([]);
           renderEvents([]);
           renderFlows([]);
