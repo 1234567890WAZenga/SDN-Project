@@ -80,8 +80,13 @@ stop_previous_topology() {
 }
 
 full_mininet_cleanup() {
-    info "Nettoyage complet Mininet avec mn -c..."
-    mn -c >/dev/null 2>&1 || true
+    if [ "${DEEP_MININET_CLEAN:-0}" = "1" ]; then
+        info "Nettoyage profond Mininet avec mn -c..."
+        info "Attention : ce mode peut interrompre le controleur sur certaines installations."
+        mn -c >/dev/null 2>&1 || true
+    else
+        info "Nettoyage cible Mininet sans arreter Ryu..."
+    fi
 
     info "Suppression des interfaces Mininet restantes..."
     if command -v ip >/dev/null 2>&1; then
@@ -149,6 +154,7 @@ PY
 require_root
 check_python_mininet
 check_topology_config
+check_ryu
 stop_previous_topology
 full_mininet_cleanup
 check_ryu
