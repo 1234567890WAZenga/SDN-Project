@@ -2,6 +2,7 @@
 import contextlib
 import io
 import json
+import os
 import shlex
 import socket
 import subprocess
@@ -321,7 +322,12 @@ def build_topology():
         info("*** Commandes utiles : pingall, h1 ping -c 4 h2, h3 ping -c 4 h4\n")
         info("*** Pour voir OpenFlow : sh ovs-ofctl dump-flows s1 -O OpenFlow13\n")
 
-        CLI(net)
+        if os.environ.get("NO_CLI") == "1":
+            info("*** Mode dashboard : topologie maintenue active sans console Mininet\n")
+            while True:
+                time.sleep(1)
+        else:
+            CLI(net)
 
     finally:
         info("*** Arrêt des services et nettoyage Mininet\n")

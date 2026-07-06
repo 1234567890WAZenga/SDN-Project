@@ -7,251 +7,322 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
-    <header class="header">
-      <div>
-        <span class="eyebrow">Infrastructure SDN</span>
-        <h1>Supervision réseau</h1>
-        <p>Contrôleur Ryu, topologie Mininet, flux OpenFlow et politiques dynamiques.</p>
-      </div>
-      <div class="statusBox">
-        <span id="apiStatusDot" class="dot pending"></span>
-        <div>
-          <strong id="apiStatus">Contrôleur en attente</strong>
-          <span id="uptime">Uptime: --</span>
+    <div class="appShell">
+      <aside class="sidebar">
+        <div class="brandBlock">
+          <span class="eyebrow">Infrastructure SDN</span>
+          <h1>Dashboard SDN</h1>
+          <p>Visualiser, tester et gerer le reseau.</p>
         </div>
-      </div>
-    </header>
 
-    <main class="page">
-      <section class="summaryGrid">
-        <article>
-          <span>Switches</span>
-          <strong id="switchCount">0</strong>
-          <small>Open vSwitch connectés</small>
-        </article>
-        <article>
-          <span>Hôtes</span>
-          <strong id="hostCount">0</strong>
-          <small>Détectés par le contrôleur</small>
-        </article>
-        <article>
-          <span>Flux</span>
-          <strong id="flowCount">0</strong>
-          <small>Règles OpenFlow visibles</small>
-        </article>
-        <article>
-          <span>Bloqués</span>
-          <strong id="blockedCount">0</strong>
-          <small>Politiques SDN</small>
-        </article>
-        <article>
-          <span>Paquets autorisés</span>
-          <strong id="allowedPackets">0</strong>
-          <small>Trafic accepté</small>
-        </article>
-        <article>
-          <span>Paquets bloqués</span>
-          <strong id="blockedPackets">0</strong>
-          <small>Effet des règles</small>
-        </article>
-        <article>
-          <span>Packet-In</span>
-          <strong id="packetInCount">0</strong>
-          <small>Activité du contrôleur</small>
-        </article>
-        <article>
-          <span>Flow-Mod</span>
-          <strong id="flowModCount">0</strong>
-          <small>Règles installées</small>
-        </article>
-      </section>
+        <nav class="navMenu" aria-label="Navigation dashboard">
+          <button class="navItem active" data-page="overview">Vue d'ensemble</button>
+          <button class="navItem" data-page="topology">Topologie</button>
+          <button class="navItem" data-page="tests">Tests reseau</button>
+          <button class="navItem" data-page="rules">Regles SDN</button>
+          <button class="navItem" data-page="flows">Flux OpenFlow</button>
+          <button class="navItem" data-page="events">Evenements</button>
+          <button class="navItem" data-page="config">Configuration</button>
+        </nav>
 
-      <section class="missionGrid">
-        <span><strong>Topologie</strong> en temps réel</span>
-        <span><strong>Tests</strong> de connectivité</span>
-        <span><strong>Politiques</strong> OpenFlow</span>
-      </section>
-
-      <section class="gridTwo">
-        <article class="panel">
-          <div class="panelTitle">
-            <div>
-              <span class="sectionLabel">Topologie</span>
-              <h2>Vue réseau</h2>
-            </div>
-            <span id="mininetStatus" class="hint">Mininet en attente</span>
+        <div class="sideStatus">
+          <span id="apiStatusDot" class="dot pending"></span>
+          <div>
+            <strong id="apiStatus">Ryu en attente</strong>
+            <span id="uptime">Uptime: --</span>
           </div>
-          <div id="topologyActivity" class="activity hidden"></div>
-          <div class="topologyLegend">
-            <span><i class="legend control"></i>Ryu</span>
-            <span><i class="legend data"></i>Switch connecté</span>
-            <span><i class="legend host"></i>Hôte</span>
-            <span><i class="legend warn"></i>Action en cours</span>
-          </div>
-          <div id="topologyMap" class="topologyMap"></div>
-        </article>
+        </div>
+      </aside>
 
-        <article class="panel">
-          <div class="panelTitle">
-            <div>
-              <span class="sectionLabel">Paramètres</span>
-              <h2>Configuration Mininet</h2>
-            </div>
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <span class="sectionLabel">Projet</span>
+            <h2 id="pageTitle">Vue d'ensemble</h2>
+            <p id="pageSubtitle">Etat general de l'infrastructure SDN.</p>
           </div>
-          <div class="configForm">
-            <label>
+          <div id="mininetStatus" class="statusPill">Mininet en attente</div>
+        </header>
+
+        <section id="page-overview" class="pageView active">
+          <div class="summaryGrid">
+            <article>
               <span>Switches</span>
-              <input id="cfgSwitches" type="number" min="1" max="12" value="3">
-            </label>
-            <label>
-              <span>Hôtes par switch</span>
-              <input id="cfgHostsPerSwitch" type="number" min="1" max="20" value="2">
-            </label>
-            <label>
-              <span>Type</span>
-              <select id="cfgTopologyType">
-                <option value="linear">Linéaire</option>
+              <strong id="switchCount">0</strong>
+              <small>Open vSwitch connectes</small>
+            </article>
+            <article>
+              <span>Hotes</span>
+              <strong id="hostCount">0</strong>
+              <small>Machines Mininet detectees</small>
+            </article>
+            <article>
+              <span>Flux</span>
+              <strong id="flowCount">0</strong>
+              <small>Regles OpenFlow visibles</small>
+            </article>
+            <article>
+              <span>Regles bloquees</span>
+              <strong id="blockedCount">0</strong>
+              <small>Politiques DROP</small>
+            </article>
+            <article>
+              <span>Paquets autorises</span>
+              <strong id="allowedPackets">0</strong>
+              <small>Trafic accepte</small>
+            </article>
+            <article>
+              <span>Paquets bloques</span>
+              <strong id="blockedPackets">0</strong>
+              <small>Effet des politiques</small>
+            </article>
+            <article>
+              <span>Packet-In</span>
+              <strong id="packetInCount">0</strong>
+              <small>Activite du controleur</small>
+            </article>
+            <article>
+              <span>Flow-Mod</span>
+              <strong id="flowModCount">0</strong>
+              <small>Regles installees</small>
+            </article>
+          </div>
+
+          <div class="gridTwo">
+            <article class="panel">
+              <div class="panelTitle">
+                <div>
+                  <span class="sectionLabel">Lecture rapide</span>
+                  <h3>Role du dashboard</h3>
+                </div>
+              </div>
+              <div class="purposeGrid">
+                <div><strong>Visualiser</strong><span>Controleur, switches, hotes et liens.</span></div>
+                <div><strong>Tester</strong><span>Generer du trafic avec Mininet.</span></div>
+                <div><strong>Gerer</strong><span>Appliquer des politiques SDN.</span></div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panelTitle">
+                <div>
+                  <span class="sectionLabel">Derniere action</span>
+                  <h3>Politique appliquee</h3>
+                </div>
+              </div>
+              <p id="lastRule" class="lastRule">Derniere regle : aucune</p>
+            </article>
+          </div>
+
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Journal</span>
+                <h3>Derniers evenements SDN</h3>
+              </div>
+            </div>
+            <div id="overviewEvents" class="events"></div>
+          </article>
+        </section>
+
+        <section id="page-topology" class="pageView">
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Topologie</span>
+                <h3>Vue reseau</h3>
+              </div>
+            </div>
+            <div id="topologyActivity" class="activity hidden"></div>
+            <div class="legendRow">
+              <span><i class="legend control"></i>Controleur Ryu</span>
+              <span><i class="legend data"></i>Switch actif</span>
+              <span><i class="legend host"></i>Hote</span>
+              <span><i class="legend warn"></i>Commande en cours</span>
+            </div>
+            <div id="topologyMap" class="topologyMap"></div>
+          </article>
+        </section>
+
+        <section id="page-tests" class="pageView">
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Mininet</span>
+                <h3>Commandes de test</h3>
+              </div>
+            </div>
+            <div class="quickCommands">
+              <div>
+                <span>Connectivite</span>
+                <button class="commandBtn" data-command="pingall">pingall</button>
+                <button class="commandBtn" data-command="h1 ping -c 4 h2">H1 vers H2</button>
+                <button class="commandBtn" data-command="h1 ping -c 4 h6">H1 vers H6</button>
+              </div>
+              <div>
+                <span>Politique</span>
+                <button class="commandBtn" data-command="h3 ping -c 4 h4">H3 vers H4</button>
+              </div>
+              <div>
+                <span>Preuve OpenFlow</span>
+                <button class="commandBtn" data-command="sh ovs-ofctl dump-flows s1 -O OpenFlow13">Flows S1</button>
+              </div>
+            </div>
+            <div class="commandRow">
+              <input id="commandInput" type="text" value="h1 ping -c 4 h2">
+              <button id="runCommandBtn" class="primaryBtn">Executer</button>
+            </div>
+            <pre id="commandOutput" class="console">La sortie des commandes Mininet apparaitra ici.</pre>
+          </article>
+        </section>
+
+        <section id="page-rules" class="pageView">
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Politiques</span>
+                <h3>Regles SDN</h3>
+              </div>
+            </div>
+            <form id="ruleForm" class="ruleForm">
+              <input id="ruleDescription" type="text" placeholder="Description">
+              <input id="ruleSrc" type="text" placeholder="IP source, ex: 10.0.0.3">
+              <input id="ruleDst" type="text" placeholder="IP destination, ex: 10.0.0.4">
+              <select id="ruleProto">
+                <option value="any">any</option>
+                <option value="icmp">icmp</option>
+                <option value="tcp">tcp</option>
+                <option value="udp">udp</option>
               </select>
-            </label>
-            <button id="saveTopologyBtn" class="primaryBtn">Sauvegarder</button>
-          </div>
-          <p id="topologyConfigStatus" class="note">Relancer Mininet après modification.</p>
-        </article>
-      </section>
+              <select id="ruleAction">
+                <option value="deny">Bloquer</option>
+                <option value="allow">Autoriser</option>
+              </select>
+              <button class="primaryBtn" type="submit">Ajouter</button>
+            </form>
+            <p id="ruleStatus" class="note">Les regles actives sont poussees vers les switches.</p>
+            <div id="rules" class="list"></div>
+          </article>
+        </section>
 
-      <section class="panel proofPanel">
-        <div class="panelTitle">
-          <div>
-              <span class="sectionLabel">Chaîne SDN</span>
-              <h2>Traitement d'un flux</h2>
-          </div>
-        </div>
-        <div class="proofSteps">
-          <div id="stepSwitch" class="step">
-            <span>1</span>
-            <strong>Switch connecté</strong>
-            <small>Session OpenFlow active.</small>
-          </div>
-          <div id="stepPacket" class="step">
-            <span>2</span>
-            <strong>Packet-In</strong>
-            <small>Paquet remonté vers Ryu.</small>
-          </div>
-          <div id="stepDecision" class="step">
-            <span>3</span>
-            <strong>Décision</strong>
-            <small>Analyse du flux.</small>
-          </div>
-          <div id="stepFlow" class="step">
-            <span>4</span>
-            <strong>Flow-Mod</strong>
-            <small>Règle installée sur OVS.</small>
-          </div>
-        </div>
-        <div class="proofLegend">
-          <span><i class="legend control"></i>Plan de contrôle</span>
-          <span><i class="legend data"></i>Plan de données</span>
-          <span><i class="legend flow"></i>Règle OpenFlow</span>
-          <span><i class="legend danger"></i>Flux bloqué</span>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panelTitle">
-          <div>
-            <span class="sectionLabel">Tests</span>
-            <h2>Commandes Mininet</h2>
-          </div>
-        </div>
-        <div class="quickCommands">
-          <div>
-            <span>Connectivité</span>
-            <button class="commandBtn" data-command="pingall">pingall</button>
-            <button class="commandBtn" data-command="h1 ping -c 4 h2">H1 → H2</button>
-            <button class="commandBtn" data-command="h1 ping -c 4 h6">H1 → H6</button>
-          </div>
-          <div>
-            <span>Politique</span>
-            <button class="commandBtn" data-command="h3 ping -c 4 h4">H3 → H4</button>
-          </div>
-          <div>
-            <span>Preuve OpenFlow</span>
-            <button class="commandBtn" data-command="sh ovs-ofctl dump-flows s1 -O OpenFlow13">Flows S1</button>
-          </div>
-        </div>
-        <div class="commandRow">
-          <input id="commandInput" type="text" value="h1 ping -c 4 h2">
-          <button id="runCommandBtn" class="primaryBtn">Exécuter</button>
-        </div>
-        <pre id="commandOutput" class="console">La sortie des commandes Mininet apparaîtra ici.</pre>
-      </section>
-
-      <section class="gridTwo">
-        <article class="panel">
-          <div class="panelTitle">
-            <div>
-              <span class="sectionLabel">Politiques</span>
-              <h2>Règles de flux</h2>
+        <section id="page-flows" class="pageView">
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Preuve technique</span>
+                <h3>Flux installes dans Open vSwitch</h3>
+              </div>
             </div>
-          </div>
-          <form id="ruleForm" class="ruleForm">
-            <input id="ruleDescription" type="text" placeholder="Description">
-            <input id="ruleSrc" type="text" placeholder="IP source, ex: 10.0.0.2">
-            <input id="ruleDst" type="text" placeholder="IP destination, ex: 10.0.0.4">
-            <select id="ruleProto">
-              <option value="any">any</option>
-              <option value="icmp">icmp</option>
-              <option value="tcp">tcp</option>
-              <option value="udp">udp</option>
-            </select>
-            <select id="ruleAction">
-              <option value="deny">Bloquer</option>
-              <option value="allow">Autoriser</option>
-            </select>
-            <button class="primaryBtn" type="submit">Ajouter</button>
-          </form>
-          <p id="ruleStatus" class="note">Les règles actives sont poussées vers les switches.</p>
-          <p id="lastRule" class="lastRule">Dernière règle : aucune</p>
-          <div id="rules" class="list"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panelTitle">
-            <div>
-              <span class="sectionLabel">Journal</span>
-              <h2>Événements Ryu</h2>
+            <div class="tableWrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Communication</th>
+                    <th>Switch</th>
+                    <th>Protocole</th>
+                    <th>Decision</th>
+                    <th>Paquets</th>
+                    <th>Match</th>
+                  </tr>
+                </thead>
+                <tbody id="flows"></tbody>
+              </table>
             </div>
-          </div>
-          <div id="events" class="events"></div>
-        </article>
-      </section>
+          </article>
+        </section>
 
-      <section class="panel">
-        <div class="panelTitle">
-          <div>
-            <span class="sectionLabel">Preuves techniques</span>
-            <h2>Flux installés</h2>
-          </div>
-        </div>
-        <div class="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Communication</th>
-                <th>Switch</th>
-                <th>Protocole</th>
-                <th>Décision</th>
-                <th>Paquets</th>
-                <th>Match</th>
-              </tr>
-            </thead>
-            <tbody id="flows"></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+        <section id="page-events" class="pageView">
+          <article class="panel proofPanel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Chaine SDN</span>
+                <h3>Traitement d'un flux</h3>
+              </div>
+            </div>
+            <div class="proofSteps">
+              <div id="stepSwitch" class="step">
+                <span>1</span>
+                <strong>Switch connecte</strong>
+                <small>Session OpenFlow active.</small>
+              </div>
+              <div id="stepPacket" class="step">
+                <span>2</span>
+                <strong>Packet-In</strong>
+                <small>Paquet envoye vers Ryu.</small>
+              </div>
+              <div id="stepDecision" class="step">
+                <span>3</span>
+                <strong>Decision</strong>
+                <small>Analyse du flux.</small>
+              </div>
+              <div id="stepFlow" class="step">
+                <span>4</span>
+                <strong>Flow-Mod</strong>
+                <small>Regle installee sur OVS.</small>
+              </div>
+            </div>
+            <div class="legendRow">
+              <span><i class="legend control"></i>Plan de controle</span>
+              <span><i class="legend data"></i>Plan de donnees</span>
+              <span><i class="legend flow"></i>Regle OpenFlow</span>
+              <span><i class="legend danger"></i>Flux bloque</span>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Ryu</span>
+                <h3>Evenements du controleur</h3>
+              </div>
+            </div>
+            <div id="events" class="events"></div>
+          </article>
+        </section>
+
+        <section id="page-config" class="pageView">
+          <article class="panel">
+            <div class="panelTitle">
+              <div>
+                <span class="sectionLabel">Parametres</span>
+                <h3>Configuration Mininet</h3>
+              </div>
+            </div>
+            <div class="configForm">
+              <label>
+                <span>Nombre de switches</span>
+                <input id="cfgSwitches" type="number" min="1" max="12" value="3">
+              </label>
+              <label>
+                <span>Hotes par switch</span>
+                <input id="cfgHostsPerSwitch" type="number" min="1" max="20" value="2">
+              </label>
+              <label>
+                <span>Type de topologie</span>
+                <select id="cfgTopologyType">
+                  <option value="linear">Lineaire</option>
+                </select>
+              </label>
+              <button id="saveTopologyBtn" class="primaryBtn">Sauvegarder</button>
+              <button id="restartTopologyBtn" class="secondary" type="button">Relancer Mininet</button>
+            </div>
+            <p id="topologyConfigStatus" class="note">Sauvegarde puis relance automatique de Mininet.</p>
+          </article>
+        </section>
+      </main>
+    </div>
 
     <script>
+      const pageMeta = {
+        overview: ["Vue d'ensemble", "Etat general de l'infrastructure SDN."],
+        topology: ["Topologie", "Representation visuelle du controleur, des switches et des hotes."],
+        tests: ["Tests reseau", "Commandes Mininet pour generer du trafic et verifier la connectivite."],
+        rules: ["Regles SDN", "Creation et gestion des politiques de communication."],
+        flows: ["Flux OpenFlow", "Preuves techniques des regles installees dans Open vSwitch."],
+        events: ["Evenements", "Etapes Packet-In, decision du controleur et Flow-Mod."],
+        config: ["Configuration", "Definition du nombre de switches et d'hotes."]
+      };
+
       let expectedHosts = [];
       let configuredSwitches = 2;
       let lastState = {switches: {}, hosts: {}, topology: {}};
@@ -282,6 +353,19 @@
       function fmtSeconds(seconds) {
         const value = Number(seconds || 0);
         return value < 60 ? value + "s" : Math.floor(value / 60) + "m";
+      }
+
+      function switchPage(page) {
+        const selected = pageMeta[page] ? page : "overview";
+        document.querySelectorAll(".navItem").forEach((item) => {
+          item.classList.toggle("active", item.dataset.page === selected);
+        });
+        document.querySelectorAll(".pageView").forEach((view) => {
+          view.classList.toggle("active", view.id === "page-" + selected);
+        });
+        document.getElementById("pageTitle").textContent = pageMeta[selected][0];
+        document.getElementById("pageSubtitle").textContent = pageMeta[selected][1];
+        window.location.hash = selected;
       }
 
       function hostLabel(ip) {
@@ -338,10 +422,10 @@
           document.getElementById("cfgSwitches").value = configuredSwitches;
           document.getElementById("cfgHostsPerSwitch").value = Number(topology.hosts_per_switch || 2);
           document.getElementById("cfgTopologyType").value = topology.type || "linear";
-          status.textContent = "Configuration chargée";
+          status.textContent = "Configuration chargee.";
           renderTopology(lastState);
         } catch (error) {
-          status.textContent = "Configuration indisponible";
+          status.textContent = "Configuration indisponible.";
         }
       }
 
@@ -353,17 +437,48 @@
           type: document.getElementById("cfgTopologyType").value
         };
 
-        status.textContent = "Sauvegarde en cours";
+        status.textContent = "Sauvegarde en cours...";
         try {
-          const result = await fetchJson("/api/topology-config", {
+          await fetchJson("/api/topology-config", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(payload)
           });
-          status.textContent = "Configuration sauvegardée. Relancer Mininet.";
+          status.textContent = "Configuration sauvegardee. Redemarrage de Mininet...";
+          status.className = "note";
           await loadTopologyConfig();
+          await restartTopology();
         } catch (error) {
           status.textContent = "Erreur : " + error.message;
+          status.className = "note dangerText";
+        }
+      }
+
+      async function restartTopology() {
+        const status = document.getElementById("topologyConfigStatus");
+        status.textContent = "Redemarrage controle de Mininet en cours...";
+        status.className = "note";
+        try {
+          const result = await fetchJson("/api/mininet/restart", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({})
+          });
+          status.textContent = "Mininet relance. Actualisation de la topologie...";
+          status.className = "note okText";
+          await waitForMininetRefresh();
+        } catch (error) {
+          status.textContent = "Redemarrage impossible : " + error.message;
+          status.className = "note dangerText";
+        }
+      }
+
+      async function waitForMininetRefresh() {
+        for (let attempt = 0; attempt < 12; attempt++) {
+          await refresh();
+          const status = document.getElementById("mininetStatus");
+          if (status.classList.contains("ok")) return;
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
 
@@ -396,6 +511,7 @@
 
         input.value = value;
         output.textContent = "$ " + value + "\n\nCommande en cours...";
+        switchPage("tests");
         showActivity(value, "running");
 
         try {
@@ -408,7 +524,7 @@
           showActivity(value, result.ok ? "done" : "error");
           await refresh();
         } catch (error) {
-          output.textContent = "$ " + value + "\n\nMininet ne répond pas. Vérifier sudo ./scripts/run_topology.sh.";
+          output.textContent = "$ " + value + "\n\nMininet ne repond pas. Verifier sudo ./scripts/run_topology.sh.";
           showActivity(value, "error");
         }
       }
@@ -417,11 +533,11 @@
         const status = document.getElementById("mininetStatus");
         try {
           const result = await fetchJson("/api/mininet/status");
-          status.textContent = `Mininet actif · ${(result.switches || []).length} switches · ${Object.keys(result.hosts || {}).length} hôtes`;
-          status.className = "hint okText";
+          status.textContent = `Mininet actif - ${(result.switches || []).length} switches - ${Object.keys(result.hosts || {}).length} hotes`;
+          status.className = "statusPill ok";
         } catch (error) {
-          status.textContent = "Mininet indisponible · sudo ./scripts/run_topology.sh";
-          status.className = "hint dangerText";
+          status.textContent = "Mininet indisponible";
+          status.className = "statusPill danger";
         }
       }
 
@@ -447,7 +563,7 @@
         const activeHosts = new Set(active ? activeCommand.hosts : []);
         if (active) {
           activity.className = "activity " + activeCommand.status;
-          activity.textContent = `${activeCommand.status === "running" ? "En cours" : "Terminé"} · ${activeCommand.command}`;
+          activity.textContent = `${activeCommand.status === "running" ? "En cours" : "Termine"} - ${activeCommand.command}`;
         } else {
           activity.className = "activity hidden";
           activity.textContent = "";
@@ -456,7 +572,7 @@
         map.innerHTML = "";
         const controller = document.createElement("div");
         controller.className = "node controller" + (active ? " activeCommand" : "");
-        controller.innerHTML = "<span>Contrôleur</span><strong>Ryu</strong><small>Plan de contrôle</small>";
+        controller.innerHTML = "<span>Controleur</span><strong>Ryu</strong><small>Plan de controle</small>";
         map.appendChild(controller);
 
         const switchCount = Number(configuredSwitches || 2);
@@ -469,7 +585,7 @@
           group.style.setProperty("--host-count", String(expectedHosts.filter((host) => String(host.switch) === swKey).length));
           const switchNode = document.createElement("div");
           switchNode.className = "node switch" + (switches.includes(swKey) ? " online" : "");
-          switchNode.innerHTML = `<span>Switch</span><strong>S${sw}</strong><small>${switches.includes(swKey) ? "connecté" : "attendu"}</small>`;
+          switchNode.innerHTML = `<span>Switch</span><strong>S${sw}</strong><small>${switches.includes(swKey) ? "connecte" : "attendu"}</small>`;
           group.appendChild(switchNode);
 
           const hosts = expectedHosts.filter((host) => String(host.switch) === swKey);
@@ -480,7 +596,7 @@
               + (detected ? " online" : "")
               + (host.role === "server" ? " server" : "")
               + (activeHosts.has(host.ip) ? " activeCommand" : "");
-            hostNode.innerHTML = `<span>${host.role === "server" ? "Service" : "Hôte"}</span><strong>${html(host.name)}</strong><small>${host.ip}</small>`;
+            hostNode.innerHTML = `<span>${host.role === "server" ? "Service" : "Hote"}</span><strong>${html(host.name)}</strong><small>${host.ip}</small>`;
             group.appendChild(hostNode);
           }
           switchRow.appendChild(group);
@@ -492,7 +608,7 @@
         const container = document.getElementById("rules");
         container.innerHTML = "";
         if (!rules.length) {
-          container.innerHTML = "<p class='empty'>Aucune règle.</p>";
+          container.innerHTML = "<p class='empty'>Aucune regle.</p>";
           return;
         }
         for (const rule of rules) {
@@ -502,10 +618,10 @@
           item.innerHTML = `
             <div>
               <strong>${html(rule.description || rule.id)}</strong>
-              <span>${html(rule.src_ip || "*")} → ${html(rule.dst_ip || "*")} · ${html(rule.proto || "any")} · ${rule.action === "allow" ? "autoriser" : "bloquer"} · ${enabled ? "active" : "inactive"}</span>
+              <span>${html(rule.src_ip || "*")} vers ${html(rule.dst_ip || "*")} - ${html(rule.proto || "any")} - ${rule.action === "allow" ? "autoriser" : "bloquer"} - ${enabled ? "active" : "inactive"}</span>
             </div>
             <div class="actions">
-              <button class="${enabled ? "danger" : "secondary"}" data-action="toggle"> ${enabled ? "Désactiver" : "Activer"} </button>
+              <button class="${enabled ? "danger" : "secondary"}" data-action="toggle">${enabled ? "Desactiver" : "Activer"}</button>
               <button class="ghostBtn" data-action="delete">Supprimer</button>
             </div>
           `;
@@ -546,11 +662,11 @@
             body: JSON.stringify(payload)
           });
           document.getElementById("ruleForm").reset();
-          status.textContent = "Règle appliquée.";
+          status.textContent = "Regle appliquee.";
           status.className = "note okText";
           await refresh();
         } catch (error) {
-          status.textContent = "Refusée : " + error.message;
+          status.textContent = "Refusee : " + error.message;
           status.className = "note dangerText";
         }
       }
@@ -573,20 +689,20 @@
         await refresh();
       }
 
+      function eventMarkup(events, limit) {
+        const latest = (events || []).slice(0, limit);
+        if (!latest.length) return "<p class='empty'>Aucun evenement.</p>";
+        return latest.map((event) => `
+          <div class="eventItem">
+            <span>${html(event.time)}</span>
+            <p>${html(event.message)}</p>
+          </div>
+        `).join("");
+      }
+
       function renderEvents(events) {
-        const container = document.getElementById("events");
-        container.innerHTML = "";
-        const latest = (events || []).slice(0, 8);
-        if (!latest.length) {
-          container.innerHTML = "<p class='empty'>Aucun événement.</p>";
-          return;
-        }
-        for (const event of latest) {
-          const item = document.createElement("div");
-          item.className = "eventItem";
-          item.innerHTML = `<span>${html(event.time)}</span><p>${html(event.message)}</p>`;
-          container.appendChild(item);
-        }
+        document.getElementById("events").innerHTML = eventMarkup(events, 16);
+        document.getElementById("overviewEvents").innerHTML = eventMarkup(events, 5);
       }
 
       function renderFlows(flows) {
@@ -597,7 +713,7 @@
           const bBlocked = b.action === "bloque" ? 1 : 0;
           if (aBlocked !== bBlocked) return bBlocked - aBlocked;
           return Number(b.packets || 0) - Number(a.packets || 0);
-        }).slice(0, 12);
+        }).slice(0, 20);
         if (!sorted.length) {
           tbody.innerHTML = "<tr><td colspan='6' class='emptyCell'>Aucun flux.</td></tr>";
           return;
@@ -646,7 +762,7 @@
           document.getElementById("blockedPackets").textContent = summary.blocked_packets || 0;
           document.getElementById("packetInCount").textContent = summary.packet_in_count || 0;
           document.getElementById("flowModCount").textContent = summary.flow_mod_count || 0;
-          document.getElementById("lastRule").textContent = "Dernière règle : " + (summary.last_rule || "aucune");
+          document.getElementById("lastRule").textContent = "Derniere regle : " + (summary.last_rule || "aucune");
 
           renderTopology(state);
           renderRules(rules);
@@ -656,7 +772,7 @@
         } catch (error) {
           document.getElementById("apiStatus").textContent = "Ryu indisponible";
           document.getElementById("apiStatusDot").className = "dot bad";
-          document.getElementById("uptime").textContent = "Vérifie ./scripts/run_controller.sh";
+          document.getElementById("uptime").textContent = "Verifier ./scripts/run_controller.sh";
           renderTopology(lastState);
           renderRules([]);
           renderEvents([]);
@@ -665,6 +781,9 @@
         }
       }
 
+      document.querySelectorAll(".navItem").forEach((button) => {
+        button.addEventListener("click", () => switchPage(button.dataset.page));
+      });
       document.querySelectorAll(".commandBtn").forEach((button) => {
         button.addEventListener("click", () => runMininetCommand(button.dataset.command));
       });
@@ -673,11 +792,13 @@
         if (event.key === "Enter") runMininetCommand();
       });
       document.getElementById("saveTopologyBtn").addEventListener("click", saveTopologyConfig);
+      document.getElementById("restartTopologyBtn").addEventListener("click", restartTopology);
       document.getElementById("ruleForm").addEventListener("submit", createRule);
 
+      switchPage((window.location.hash || "#overview").replace("#", ""));
       loadTopologyConfig();
       refresh();
-      setInterval(refresh, 3000);
+      setInterval(refresh, 1000);
     </script>
   </body>
 </html>

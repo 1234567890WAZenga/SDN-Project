@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import requests
@@ -12,6 +13,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 TOPOLOGY_CONFIG = BASE_DIR / "topology_config.json"
 CONTROLLER_API = os.environ.get("CONTROLLER_API", "http://127.0.0.1:8080")
 MININET_API = os.environ.get("MININET_API", "http://127.0.0.1:8090")
+RESTART_TOPOLOGY_SCRIPT = BASE_DIR / "scripts" / "restart_topology.sh"
 
 app = Flask(__name__)
 
@@ -154,6 +156,39 @@ def mininet_command():
         return jsonify(response.json()), response.status_code
     except requests.RequestException as error:
         return jsonify({"ok": False, "error": str(error)}), 503
+
+
+@app.route("/api/mininet/restart", methods=["POST"])
+def restart_mininet():
+    command = ["sudo", "-n", str(RESTART_TOPOLOGY_SCRIPT)]
+    try:
+        process = subprocess.run(
+            command,
+            cwd=str(BASE_DIR),
+            capture_output=True,
+            text=True,
+            timeout=40,
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Le redemarrage de Mininet a depasse le delai.",
+                "hint": "Verifie logs/topology.log dans la VM.",
+            }
+        ), 504
+    except OSError as error:
+        return jsonify({"ok": False, "error": str(error)}), 500
+
+    output = (process.stdout or "") + (process.stderr or "")
+    if process.returncode != 0:
+        hint = (
+            "Lance une fois : sudo ./scripts/install_dashboard_sudoers.sh "
+            "pour autoriser le dashboard a relancer Mininet sans mot de passe."
+        )
+        return jsonify({"ok": False, "error": output.strip() or hint, "hint": hint}), 500
+
+    return jsonify({"ok": True, "output": output.strip()})
 
 
 if __name__ == "__main__":

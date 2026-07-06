@@ -105,6 +105,29 @@ Puis ouvrir :
 http://IP_DE_LA_VM:3000
 ```
 
+## Relance Mininet depuis le dashboard
+
+Pour que la page Configuration puisse sauvegarder puis relancer Mininet automatiquement, installer une fois la permission sudo dediee :
+
+```bash
+chmod +x scripts/restart_topology.sh scripts/install_dashboard_sudoers.sh
+sudo ./scripts/install_dashboard_sudoers.sh
+```
+
+Ensuite, depuis le dashboard :
+
+1. ouvrir la page `Configuration` ;
+2. modifier le nombre de switches ou d'hotes ;
+3. cliquer sur `Sauvegarder`.
+
+Le dashboard sauvegarde `topology_config.json`, relance Mininet en arriere-plan et actualise la topologie.
+
+La relance peut aussi etre faite manuellement :
+
+```bash
+sudo ./scripts/restart_topology.sh
+```
+
 ## Commandes de démonstration
 
 Depuis le dashboard ou la console Mininet :
