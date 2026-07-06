@@ -79,6 +79,39 @@ Avec cette configuration, Mininet crée :
 
 ## Lancement
 
+## Installation sur une nouvelle VM Ubuntu
+
+Sur une nouvelle machine Ubuntu, la preparation complete se fait avec :
+
+```bash
+cd ~/jean/SDN-Project
+chmod +x scripts/*.sh
+./scripts/install_ubuntu.sh
+```
+
+Ce script installe et prepare :
+
+- Python, Git, curl et les outils reseau ;
+- Mininet et le module Python Mininet ;
+- Open vSwitch ;
+- l'environnement virtuel Python pour Ryu et Flask ;
+- les dependances Ryu, Flask et requests ;
+- les permissions d'execution des scripts ;
+- la correction des fins de ligne Windows/Linux ;
+- la permission sudo dediee pour relancer Mininet depuis le dashboard ;
+- le nettoyage initial Mininet avec `mn -c` ;
+- la validation de `topology_config.json` et des regles SDN.
+
+Le probleme deja resolu dans les scripts :
+
+- anciennes interfaces `s1-ethX` ou `s2-ethX` restantes ;
+- ancien bridge Open vSwitch encore present ;
+- port API Mininet `8090` deja occupe ;
+- fichiers `.sh` au format Windows ;
+- topologie JSON invalide ;
+- relance Mininet depuis le dashboard sans mot de passe ;
+- affichage rapide de la nouvelle topologie dans le dashboard.
+
 Dans la VM Ubuntu, ouvrir trois terminaux.
 
 Terminal 1 :
