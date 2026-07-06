@@ -215,6 +215,12 @@ select {
   border-color: rgba(7, 132, 95, 0.3);
 }
 
+.statusPill.warn {
+  color: #8a4b05;
+  background: #fff7e6;
+  border-color: rgba(183, 121, 31, 0.36);
+}
+
 .statusPill.danger {
   color: #991b1b;
   background: #fff1f2;

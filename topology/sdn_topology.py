@@ -101,7 +101,11 @@ def translate_host_names(command, hosts):
     return shlex.join(translated)
 
 
-def make_command_handler(net, hosts, switches):
+def clean_ip(value):
+    return str(value).split("/")[0]
+
+
+def make_command_handler(net, hosts, switches, hosts_config, switch_count):
     class MininetCommandHandler(BaseHTTPRequestHandler):
         def _json(self, payload, status=200):
             body = json.dumps(payload).encode("utf-8")
@@ -133,6 +137,19 @@ def make_command_handler(net, hosts, switches):
                     "hosts": {
                         name: {"ip": node_ip(host), "mac": host.MAC()}
                         for name, host in sorted(hosts.items())
+                    },
+                    "topology": {
+                        "switches": switch_count,
+                        "expected_hosts": [
+                            {
+                                "name": host_cfg["name"],
+                                "label": host_cfg["label"],
+                                "ip": clean_ip(host_cfg["ip"]),
+                                "switch": int(host_cfg["switch"]),
+                                "service": host_cfg.get("service", "client"),
+                            }
+                            for host_cfg in hosts_config
+                        ],
                     },
                     "commands": [
                         "pingall",
@@ -241,8 +258,8 @@ class ReusableThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def start_mininet_api(net, hosts, switches):
-    handler = make_command_handler(net, hosts, switches)
+def start_mininet_api(net, hosts, switches, hosts_config, switch_count):
+    handler = make_command_handler(net, hosts, switches, hosts_config, switch_count)
     try:
         server = ReusableThreadingHTTPServer(("0.0.0.0", MININET_API_PORT), handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -316,7 +333,7 @@ def build_topology():
                 host.cmd("cd /tmp && python3 -m http.server 80 >/tmp/mininet-http.log 2>&1 &")
                 started_servers.append(host)
 
-        api_server = start_mininet_api(net, hosts, switches)
+        api_server = start_mininet_api(net, hosts, switches, hosts_config, switch_count)
 
         info("*** Topologie SDN prête\n")
         info("*** Commandes utiles : pingall, h1 ping -c 4 h2, h3 ping -c 4 h4\n")
