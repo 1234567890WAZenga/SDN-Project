@@ -5,6 +5,8 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 
 PROJECT_DIR="$(pwd)"
+VENV_DIR="$PROJECT_DIR/venv"
+PYTHON_FOR_VENV=""
 
 info() {
     echo
@@ -24,7 +26,7 @@ require_ubuntu() {
     . /etc/os-release
     if [ "${ID:-}" != "ubuntu" ]; then
         echo "ATTENTION : systeme detecte : ${PRETTY_NAME:-inconnu}."
-        echo "Le projet est teste principalement sur Ubuntu 20.04/22.04."
+        echo "Le projet est teste principalement sur Ubuntu 20.04. Sur 22.04+, prevoir Python 3.8 ou 3.9 pour Ryu."
     else
         echo "Systeme detecte : ${PRETTY_NAME:-Ubuntu}"
     fi
@@ -42,6 +44,76 @@ install_system_packages() {
         python3-testresources libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev \
         openvswitch-switch openvswitch-common \
         mininet
+}
+
+select_python_for_venv() {
+    info "Selection du Python pour Ryu"
+
+    for candidate in python3.8 python3.9; do
+        if ! command -v "$candidate" >/dev/null 2>&1; then
+            continue
+        fi
+
+        full_version="$("$candidate" - <<'PY'
+import sys
+print(sys.version.split()[0])
+PY
+)"
+        version="$("$candidate" - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}")
+PY
+)"
+        major="${version%%.*}"
+        minor="${version#*.}"
+
+        if [ "$major" = "3" ] && [ "$minor" -le 9 ]; then
+            if ! "$candidate" - <<'PY' >/dev/null 2>&1
+import ensurepip
+import ssl
+import venv
+PY
+            then
+                echo "$candidate ($full_version) ignore : module venv/ensurepip incomplet."
+                echo "Installe le paquet correspondant, par exemple python3.9-venv, puis relance."
+                continue
+            fi
+
+            PYTHON_FOR_VENV="$(command -v "$candidate")"
+            echo "Python retenu pour Ryu : $PYTHON_FOR_VENV ($full_version)"
+            if [ "$full_version" = "3.9.25" ]; then
+                echo "Python 3.9.25 detecte : verification stricte Ryu/eventlet activee."
+            fi
+            return
+        fi
+    done
+
+    fail "aucun Python compatible trouve pour Ryu. Utilise Python 3.8 ou 3.9. Python 3.10+ provoque souvent des conflits avec Ryu 4.34 et ses dependances."
+}
+
+check_ryu_runtime() {
+    "$VENV_DIR/bin/python" - <<'PY'
+import sys
+
+if sys.version_info[:2] not in ((3, 8), (3, 9)):
+    raise SystemExit(f"Python non supporte pour Ryu: {sys.version.split()[0]}")
+
+import flask
+import requests
+import ryu
+import eventlet
+import greenlet
+import dns
+from eventlet.wsgi import ALREADY_HANDLED
+
+print("Runtime Ryu OK")
+print("Python:", sys.version.split()[0])
+print("eventlet:", eventlet.__version__)
+print("greenlet:", greenlet.__version__)
+print("dnspython:", getattr(dns, "__version__", "1.16.0"))
+PY
+
+    "$VENV_DIR/bin/ryu-manager" --version >/dev/null
 }
 
 prepare_scripts() {
@@ -76,7 +148,6 @@ install_mininet_python_if_needed() {
         cd mininet
         git checkout 2.3.0
         sudo PYTHON=/usr/bin/python3 ./util/install.sh -n
-        sudo /usr/bin/python3 -m pip install --force-reinstall --no-cache-dir .
         cd "$PROJECT_DIR"
     fi
 
@@ -109,23 +180,38 @@ clean_mininet_once() {
 
 create_python_venv() {
     info "Creation de l'environnement virtuel Ryu/Flask"
-    rm -rf venv
-    python3 -m venv venv
+
+    select_python_for_venv
+
+    if [ -d "$VENV_DIR" ] && [ "${FORCE_RECREATE_VENV:-0}" != "1" ]; then
+        if check_ryu_runtime >/dev/null 2>&1
+        then
+            echo "Environnement virtuel existant conserve : $VENV_DIR"
+            "$VENV_DIR/bin/ryu-manager" --version || true
+            return
+        fi
+
+        backup_dir="$PROJECT_DIR/venv.bak.$(date '+%Y%m%d%H%M%S')"
+        echo "Environnement virtuel existant invalide. Sauvegarde vers : $backup_dir"
+        mv "$VENV_DIR" "$backup_dir"
+    elif [ -d "$VENV_DIR" ] && [ "${FORCE_RECREATE_VENV:-0}" = "1" ]; then
+        backup_dir="$PROJECT_DIR/venv.bak.$(date '+%Y%m%d%H%M%S')"
+        echo "Recreation demandee. Sauvegarde de l'ancien venv vers : $backup_dir"
+        mv "$VENV_DIR" "$backup_dir"
+    fi
+
+    "$PYTHON_FOR_VENV" -m venv "$VENV_DIR"
     # shellcheck disable=SC1091
-    source venv/bin/activate
+    source "$VENV_DIR/bin/activate"
 
     python -m pip install --upgrade --no-cache-dir \
         "pip==23.3.2" \
         "setuptools==67.7.2" \
         "wheel==0.41.3"
 
-    python -m pip install --no-cache-dir --no-build-isolation \
-        "dnspython==1.16.0" \
-        "eventlet==0.30.2" \
-        "ryu==4.34" \
-        "Flask==2.3.3" \
-        "requests==2.31.0"
+    python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
 
+    check_ryu_runtime
     ryu-manager --version
 }
 
@@ -170,6 +256,9 @@ Commandes a retenir :
 
 4) Diagnostic :
    ./scripts/diagnose.sh
+
+Si l'environnement Python Ryu doit vraiment etre recree :
+   FORCE_RECREATE_VENV=1 ./scripts/install_ubuntu.sh
 
 Depuis le navigateur Windows :
    http://IP_DE_LA_VM:3000

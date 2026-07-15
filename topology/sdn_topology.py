@@ -116,7 +116,7 @@ def ping_once(src_host, dst_host):
 
 
 def execute_pingall(hosts):
-    host_names = sorted(hosts.keys(), key=host_sort_key)
+    host_names = sorted(hosts.keys(), key=host_sort_key) 
     success = 0
     failed = 0
     failures = []
