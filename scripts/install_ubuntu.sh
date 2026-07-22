@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Prepare une VM Ubuntu pour le projet SDN.
+# A utiliser pour une nouvelle installation ou une reparation complete.
+
 set -Eeuo pipefail
 
 cd "$(dirname "$0")/.."

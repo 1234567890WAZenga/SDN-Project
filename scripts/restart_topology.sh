@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Relance Mininet en arriere-plan pour le dashboard.
+# Utilise par Flask via sudo -n apres installation de la permission sudoers.
+
 set -Eeuo pipefail
 
 cd "$(dirname "$0")/.."
@@ -25,22 +28,26 @@ fail() {
 }
 
 require_root() {
+    # Mininet doit etre gere en root pour creer/supprimer les interfaces reseau.
     if [ "${EUID:-$(id -u)}" -ne 0 ]; then
         fail "le redemarrage de Mininet doit etre lance avec sudo."
     fi
 }
 
 check_python_mininet() {
+    # Verifie que le module Python Mininet est disponible dans le Python systeme.
     info "Verification du module Python Mininet..."
     python3 -c "from mininet.cli import CLI; print('Mininet Python OK')" >/dev/null
 }
 
 check_topology_config() {
+    # Evite de relancer Mininet avec une configuration JSON invalide.
     info "Verification de topology_config.json..."
     python3 -m json.tool topology_config.json >/dev/null
 }
 
 check_ryu() {
+    # Mininet ne doit demarrer que si Ryu ecoute deja sur le port OpenFlow.
     info "Verification du controleur Ryu ${RYU_HOST}:${RYU_OPENFLOW_PORT}..."
     python3 - <<PY
 import socket
@@ -60,6 +67,7 @@ PY
 }
 
 stop_previous_topology() {
+    # Arrete l'ancienne topologie et libere l'API Mininet 8090.
     info "Arret de l'ancienne topologie Mininet..."
 
     if [ -f "$PID_FILE" ]; then
@@ -80,6 +88,7 @@ stop_previous_topology() {
 }
 
 full_mininet_cleanup() {
+    # Nettoie les interfaces et bridges restes apres un arret brutal.
     if [ "${DEEP_MININET_CLEAN:-0}" = "1" ]; then
         info "Nettoyage profond Mininet avec mn -c..."
         info "Attention : ce mode peut interrompre le controleur sur certaines installations."
@@ -110,6 +119,7 @@ full_mininet_cleanup() {
 }
 
 start_topology() {
+    # Lance Mininet sans CLI pour que le dashboard puisse garder la topologie active.
     mkdir -p "$LOG_DIR"
     : > "$TOPOLOGY_LOG"
 

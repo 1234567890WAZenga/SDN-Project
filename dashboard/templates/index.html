@@ -161,12 +161,6 @@
                 <span>Hotes par switch</span>
                 <input id="cfgHostsPerSwitch" type="number" min="1" max="20" value="2">
               </label>
-              <label>
-                <span>Type de topologie</span>
-                <select id="cfgTopologyType">
-                  <option value="linear">Lineaire</option>
-                </select>
-              </label>
               <button id="saveTopologyBtn" class="primaryBtn">Sauvegarder</button>
               <button id="restartTopologyBtn" class="secondary" type="button">Relancer Mininet</button>
             </div>
@@ -182,22 +176,7 @@
                 <h3>Commandes de test</h3>
               </div>
             </div>
-            <div class="quickCommands">
-              <div>
-                <span>Connectivite</span>
-                <button class="commandBtn" data-command="pingall">pingall</button>
-                <button class="commandBtn" data-command="h1 ping -c 4 h2">H1 vers H2</button>
-                <button class="commandBtn" data-command="h1 ping -c 4 h6">H1 vers H6</button>
-              </div>
-              <div>
-                <span>Politique</span>
-                <button class="commandBtn" data-command="h3 ping -c 4 h4">H3 vers H4</button>
-              </div>
-              <div>
-                <span>Preuve OpenFlow</span>
-                <button class="commandBtn" data-command="sh ovs-ofctl dump-flows s1 -O OpenFlow13">Flows S1</button>
-              </div>
-            </div>
+            <div id="commandCatalog" class="quickCommands"></div>
             <div id="testSummary" class="testSummary">
               <strong>Aucun test execute</strong>
               <span>Lance pingall ou un ping entre deux hotes pour voir le resultat.</span>
@@ -463,6 +442,121 @@
         renderTopology();
       }
 
+      function hostCommandName(host) {
+        return String((host || {}).name || "").toLowerCase();
+      }
+
+      function hostByLabel(label) {
+        return activeTopologyModel().hosts.find((host) => String(host.name || "").toLowerCase() === label);
+      }
+
+      function makePingCommand(src, dst, label, hint) {
+        if (!src || !dst) return null;
+        return {
+          label,
+          command: `${hostCommandName(src)} ping -c 4 ${hostCommandName(dst)}`,
+          hint
+        };
+      }
+
+      function addCommand(target, item) {
+        if (item && item.command) target.push(item);
+      }
+
+      function commandGroups() {
+        const model = activeTopologyModel();
+        const hosts = model.hosts || [];
+        const h1 = hostByLabel("h1");
+        const h2 = hostByLabel("h2");
+        const h3 = hostByLabel("h3");
+        const h4 = hostByLabel("h4");
+        const lastHost = hosts.length > 1 ? hosts[hosts.length - 1] : null;
+        const switchCount = Math.max(1, Number(model.switches || configuredSwitches || 1));
+
+        const topologyCommands = [
+          {label: "Afficher les noeuds", command: "nodes", hint: "Liste les hotes, switches et controleur."},
+          {label: "Voir les liens", command: "net", hint: "Montre comment les elements sont connectes."},
+          {label: "Etat des liens", command: "links", hint: "Verifie si les liens Mininet sont actifs."},
+          {label: "Details des noeuds", command: "dump", hint: "Affiche IP, MAC et ports utiles."}
+        ];
+
+        const connectivityCommands = [
+          {label: "Tester tout le reseau", command: "pingall", hint: "Verifie toutes les communications entre hotes."}
+        ];
+        addCommand(connectivityCommands, makePingCommand(h1, h2, "H1 vers H2", "Test simple entre deux hotes."));
+        if (lastHost && h1 && hostCommandName(lastHost) !== hostCommandName(h1) && hostCommandName(lastHost) !== hostCommandName(h2)) {
+          addCommand(
+            connectivityCommands,
+            makePingCommand(h1, lastHost, `H1 vers ${lastHost.name}`, "Test entre extremites de la topologie.")
+          );
+        }
+
+        const policyCommands = [];
+        for (const rule of (controllerState.rules || [])) {
+          if (!rule.enabled || !rule.src_ip || !rule.dst_ip) continue;
+          const src = hosts.find((host) => host.ip === rule.src_ip);
+          const dst = hosts.find((host) => host.ip === rule.dst_ip);
+          const decision = rule.action === "deny" ? "DROP" : "ALLOW";
+          addCommand(
+            policyCommands,
+            makePingCommand(
+              src,
+              dst,
+              `${src ? src.name : rule.src_ip} vers ${dst ? dst.name : rule.dst_ip}`,
+              `Teste la regle ${String(rule.proto || "any").toUpperCase()} ${decision}.`
+            )
+          );
+        }
+        if (!policyCommands.length) {
+          addCommand(policyCommands, makePingCommand(h3, h4, "H3 vers H4", "Test utile pour une regle ICMP."));
+        }
+
+        const openFlowCommands = [];
+        for (let sw = 1; sw <= Math.min(switchCount, 4); sw++) {
+          openFlowCommands.push({
+            label: `Flux S${sw}`,
+            command: `sh ovs-ofctl dump-flows s${sw} -O OpenFlow13`,
+            hint: "Affiche les regles OpenFlow du switch."
+          });
+        }
+        openFlowCommands.push({
+          label: "Etat Open vSwitch",
+          command: "sh ovs-vsctl show",
+          hint: "Montre les bridges OVS et le controleur attache."
+        });
+
+        const hostCommands = [];
+        addCommand(hostCommands, h1 && {label: "IP de H1", command: `${hostCommandName(h1)} ip addr`, hint: "Affiche l'adresse IP de H1."});
+        addCommand(hostCommands, h1 && {label: "ARP de H1", command: `${hostCommandName(h1)} arp -n`, hint: "Affiche la table ARP de H1."});
+        addCommand(hostCommands, h2 && {label: "IP de H2", command: `${hostCommandName(h2)} ip addr`, hint: "Affiche l'adresse IP de H2."});
+
+        return [
+          {title: "Topologie", commands: topologyCommands},
+          {title: "Connectivite", commands: connectivityCommands},
+          {title: "Regles SDN", commands: policyCommands},
+          {title: "OpenFlow", commands: openFlowCommands},
+          {title: "Hotes", commands: hostCommands}
+        ].filter((group) => group.commands.length);
+      }
+
+      function renderCommandCatalog() {
+        const container = document.getElementById("commandCatalog");
+        if (!container) return;
+
+        container.innerHTML = commandGroups().map((group) => `
+          <div class="commandGroup">
+            <span>${html(group.title)}</span>
+            ${group.commands.map((item) => `
+              <button class="commandBtn" type="button" data-command="${html(item.command)}">
+                <strong>${html(item.label)}</strong>
+                <small>${html(item.command)}</small>
+                <em>${html(item.hint || "")}</em>
+              </button>
+            `).join("")}
+          </div>
+        `).join("");
+      }
+
       async function loadTopologyConfig() {
         const status = document.getElementById("topologyConfigStatus");
         try {
@@ -473,9 +567,9 @@
           expectedHosts = hostsFromConfig(config);
           document.getElementById("cfgSwitches").value = configuredSwitches;
           document.getElementById("cfgHostsPerSwitch").value = Number(topology.hosts_per_switch || 2);
-          document.getElementById("cfgTopologyType").value = topology.type || "linear";
           status.textContent = "Configuration chargee.";
           renderTopology();
+          renderCommandCatalog();
         } catch (error) {
           status.textContent = "Configuration indisponible.";
           status.className = "note dangerText";
@@ -486,8 +580,7 @@
         const status = document.getElementById("topologyConfigStatus");
         const payload = {
           switches: Number(document.getElementById("cfgSwitches").value),
-          hosts_per_switch: Number(document.getElementById("cfgHostsPerSwitch").value),
-          type: document.getElementById("cfgTopologyType").value
+          hosts_per_switch: Number(document.getElementById("cfgHostsPerSwitch").value)
         };
 
         status.textContent = "Sauvegarde en cours...";
@@ -926,6 +1019,7 @@
           document.getElementById("flowModCount").textContent = summary.flow_mod_count || 0;
 
           renderTopology();
+          renderCommandCatalog();
           renderLastAction(summary, events);
           renderFlowChart(summary);
           renderTestSummary(lastTestSummary);
@@ -938,6 +1032,7 @@
           document.getElementById("apiStatusDot").className = "dot bad";
           document.getElementById("uptime").textContent = "Verifier ./scripts/run_controller.sh";
           renderTopology();
+          renderCommandCatalog();
           renderLastAction({}, []);
           renderFlowChart({});
           renderTestSummary(lastTestSummary);
@@ -951,8 +1046,9 @@
       document.querySelectorAll(".navItem").forEach((button) => {
         button.addEventListener("click", () => switchPage(button.dataset.page));
       });
-      document.querySelectorAll(".commandBtn").forEach((button) => {
-        button.addEventListener("click", () => runMininetCommand(button.dataset.command));
+      document.getElementById("commandCatalog").addEventListener("click", (event) => {
+        const button = event.target.closest(".commandBtn");
+        if (button) runMininetCommand(button.dataset.command);
       });
       document.getElementById("runCommandBtn").addEventListener("click", () => runMininetCommand());
       document.getElementById("commandInput").addEventListener("keydown", (event) => {

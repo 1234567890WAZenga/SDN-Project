@@ -1,9 +1,14 @@
 #!/bin/bash
 
+# Lance le controleur SDN Ryu.
+# A demarrer avant Mininet, car les switches OVS se connectent a ce controleur.
+
 set -e
 
+# Se placer a la racine du projet, meme si le script est lance depuis scripts/.
 cd "$(dirname "$0")/.."
 
+# Le controleur utilise l'environnement virtuel Python du projet.
 if [ ! -d "venv" ]; then
     echo "ERREUR : l'environnement virtuel n'existe pas."
     echo "Lance d'abord : ./scripts/install_ubuntu.sh"
@@ -15,6 +20,8 @@ source venv/bin/activate
 echo "Environnement virtuel active : $VIRTUAL_ENV"
 echo "Python utilise : $(which python)"
 
+# Ryu 4.34 fonctionne correctement avec Python 3.8/3.9.
+# Cette verification evite les erreurs connues avec Python 3.12.
 python - <<'PY'
 import sys
 
@@ -39,4 +46,5 @@ PY
 
 echo "Lancement du controleur Ryu sur le port OpenFlow 6653..."
 
+# Le port 6653 est le port OpenFlow utilise par les switches Open vSwitch.
 ryu-manager --ofp-tcp-listen-port 6653 controller/sdn_controller.py

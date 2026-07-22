@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Affiche un diagnostic rapide du projet SDN.
+# Utile pour verifier Ryu, Mininet, le dashboard, les ports et les flux OVS.
+
 set +e
 
 cd "$(dirname "$0")/.."
@@ -14,6 +17,7 @@ git log --oneline -1 2>/dev/null || true
 echo
 
 echo "2) Fichiers de configuration JSON"
+# Ces deux fichiers doivent etre valides avant de lancer Ryu/Mininet.
 for file in topology_config.json policies/firewall_rules.json; do
     if python3 -m json.tool "$file" >/dev/null 2>&1; then
         echo "OK : $file"
@@ -25,6 +29,7 @@ done
 echo
 
 echo "3) Scripts et permissions"
+# Verifie les droits d'execution et les fins de ligne Linux.
 for file in scripts/*.sh; do
     [ -e "$file" ] || continue
     if [ -x "$file" ]; then
@@ -45,6 +50,7 @@ done
 echo
 
 echo "4) Permission sudo dashboard"
+# Sans cette permission, le bouton de relance Mininet du dashboard echoue.
 restart_path="$(pwd)/scripts/restart_topology.sh"
 if sudo -n -l "$restart_path" >/dev/null 2>&1; then
     echo "OK : sudo sans mot de passe autorise pour $restart_path"
@@ -59,6 +65,7 @@ pgrep -a -f "ryu-manager|sdn_controller.py|sdn_topology.py|dashboard/app.py" || 
 echo
 
 echo "6) Ports"
+# 3000=dashboard, 6653=OpenFlow, 8080=API Ryu, 8090=API Mininet.
 for port in 3000 6653 8080 8090; do
     if command -v ss >/dev/null 2>&1; then
         ss -ltnp 2>/dev/null | grep ":$port " || echo "Port $port : pas en ecoute"
@@ -96,6 +103,7 @@ fi
 echo
 
 echo "9) Bridges Open vSwitch"
+# Affiche les switches OVS et les premiers flux OpenFlow installes.
 if command -v ovs-vsctl >/dev/null 2>&1; then
     sudo ovs-vsctl list-br
     echo

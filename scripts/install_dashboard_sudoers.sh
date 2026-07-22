@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Installe une permission sudo limitee pour le dashboard.
+# Elle autorise uniquement restart_topology.sh sans demander le mot de passe.
+
 set -e
 
 cd "$(dirname "$0")/.."
@@ -16,10 +19,12 @@ SUDOERS_FILE="/etc/sudoers.d/sdn-dashboard"
 
 chmod +x "$RESTART_SCRIPT"
 
+# Creation d'une regle sudoers dediee au projet SDN.
 cat > "$SUDOERS_FILE" <<EOF
 $DASHBOARD_USER ALL=(root) NOPASSWD: $RESTART_SCRIPT
 EOF
 
+# Verification de syntaxe avant d'utiliser la permission.
 chmod 440 "$SUDOERS_FILE"
 visudo -cf "$SUDOERS_FILE"
 
