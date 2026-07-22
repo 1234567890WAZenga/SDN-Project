@@ -198,22 +198,37 @@
               </div>
             </div>
             <form id="ruleForm" class="ruleForm">
-              <input id="ruleDescription" type="text" placeholder="Description">
-              <input id="ruleSrc" type="text" placeholder="IP source, ex: 10.0.0.3">
-              <input id="ruleDst" type="text" placeholder="IP destination, ex: 10.0.0.4">
-              <select id="ruleProto">
-                <option value="any">any</option>
-                <option value="icmp">icmp</option>
-                <option value="tcp">tcp</option>
-                <option value="udp">udp</option>
-              </select>
-              <select id="ruleAction">
-                <option value="deny">Bloquer</option>
-                <option value="allow">Autoriser</option>
-              </select>
+              <label class="field">
+                <span>Description</span>
+                <input id="ruleDescription" type="text" placeholder="Ex: Bloquer H3 vers H4">
+              </label>
+              <label class="field">
+                <span>Source</span>
+                <select id="ruleSrc"></select>
+              </label>
+              <label class="field">
+                <span>Destination</span>
+                <select id="ruleDst"></select>
+              </label>
+              <label class="field">
+                <span>Protocole</span>
+                <select id="ruleProto">
+                  <option value="icmp">ICMP</option>
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                  <option value="any">ANY</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Action</span>
+                <select id="ruleAction">
+                  <option value="deny">Bloquer</option>
+                  <option value="allow">Autoriser</option>
+                </select>
+              </label>
               <button class="primaryBtn" type="submit">Ajouter</button>
             </form>
-            <p id="ruleStatus" class="note">Les regles actives sont appliquees par le controleur Ryu.</p>
+            <p id="ruleStatus" class="note">Choisis deux hotes de la topologie, un protocole et une action.</p>
             <div id="rules" class="list"></div>
           </article>
         </section>
@@ -247,6 +262,11 @@
                 <strong>Flow-Mod</strong>
                 <small>Regle installee sur OVS.</small>
               </div>
+            </div>
+            <div id="proofStats" class="proofStats"></div>
+            <div id="proofLastAction" class="lastActionCard proofAction">
+              <strong>Aucune action observee</strong>
+              <span>Lance un test Mininet pour voir Packet-In, decision et Flow-Mod.</span>
             </div>
           </article>
 
@@ -303,6 +323,7 @@
       let restartInProgress = false;
       let activeCommand = null;
       let lastTestSummary = null;
+      let ruleHostOptionsKey = null;
 
       async function fetchJson(url, options) {
         const response = await fetch(url, options);
@@ -420,6 +441,36 @@
       function hostNameFromIp(ip) {
         const host = activeTopologyModel().hosts.find((item) => item.ip === ip);
         return host ? host.name : (ip || "*");
+      }
+
+      function hostDisplay(host) {
+        const switchLabel = host.switch ? `S${host.switch}` : "switch ?";
+        return `${host.name || host.ip} - ${host.ip} - ${switchLabel}`;
+      }
+
+      function renderRuleHostOptions() {
+        const srcSelect = document.getElementById("ruleSrc");
+        const dstSelect = document.getElementById("ruleDst");
+        if (!srcSelect || !dstSelect) return;
+
+        const hosts = (activeTopologyModel().hosts || [])
+          .filter((host) => host.ip)
+          .sort((a, b) => Number(a.ip.split(".").pop()) - Number(b.ip.split(".").pop()));
+        const optionsKey = hosts.map((host) => `${host.ip}:${host.name}:${host.switch}`).join("|");
+        if (optionsKey === ruleHostOptionsKey) return;
+
+        ruleHostOptionsKey = optionsKey;
+        const fillSelect = (select, placeholder) => {
+          const selected = select.value;
+          select.innerHTML = `<option value="">${placeholder}</option>` + hosts.map((host) => (
+            `<option value="${html(host.ip)}">${html(hostDisplay(host))}</option>`
+          )).join("");
+          select.disabled = hosts.length === 0;
+          if (hosts.some((host) => host.ip === selected)) select.value = selected;
+        };
+
+        fillSelect(srcSelect, "Choisir la source");
+        fillSelect(dstSelect, "Choisir la destination");
       }
 
       function failureHosts(summary) {
@@ -570,6 +621,7 @@
           status.textContent = "Configuration chargee.";
           renderTopology();
           renderCommandCatalog();
+          renderRuleHostOptions();
         } catch (error) {
           status.textContent = "Configuration indisponible.";
           status.className = "note dangerText";
@@ -771,11 +823,19 @@
         for (const rule of rules) {
           const enabled = Boolean(rule.enabled);
           const item = document.createElement("div");
-          item.className = "listItem";
+          const blocked = rule.action === "deny";
+          const srcName = hostNameFromIp(rule.src_ip);
+          const dstName = hostNameFromIp(rule.dst_ip);
+          item.className = "listItem ruleItem " + (blocked ? "denyRule" : "allowRule");
           item.innerHTML = `
             <div>
               <strong>${html(rule.description || rule.id)}</strong>
-              <span>${html(rule.src_ip || "*")} vers ${html(rule.dst_ip || "*")} - ${html(rule.proto || "any")} - ${rule.action === "allow" ? "autoriser" : "bloquer"} - ${enabled ? "active" : "inactive"}</span>
+              <span>${html(srcName)} (${html(rule.src_ip || "*")}) vers ${html(dstName)} (${html(rule.dst_ip || "*")})</span>
+              <div class="ruleMeta">
+                <b>${html(String(rule.proto || "any").toUpperCase())}</b>
+                <b class="${blocked ? "drop" : "allow"}">${blocked ? "DROP" : "ALLOW"}</b>
+                <b class="${enabled ? "active" : "inactive"}">${enabled ? "Active" : "Inactive"}</b>
+              </div>
             </div>
             <div class="actions">
               <button class="${enabled ? "danger" : "secondary"}" data-action="toggle">${enabled ? "Desactiver" : "Activer"}</button>
@@ -793,15 +853,20 @@
         const status = document.getElementById("ruleStatus");
         const payload = {
           description: document.getElementById("ruleDescription").value.trim(),
-          src_ip: document.getElementById("ruleSrc").value.trim(),
-          dst_ip: document.getElementById("ruleDst").value.trim(),
+          src_ip: document.getElementById("ruleSrc").value,
+          dst_ip: document.getElementById("ruleDst").value,
           proto: document.getElementById("ruleProto").value,
           action: document.getElementById("ruleAction").value,
           enabled: true
         };
 
-        if (!payload.src_ip && !payload.dst_ip) {
-          status.textContent = "IP source ou destination requise.";
+        if (!payload.src_ip || !payload.dst_ip) {
+          status.textContent = "Choisis la source et la destination.";
+          status.className = "note dangerText";
+          return;
+        }
+        if (payload.src_ip === payload.dst_ip) {
+          status.textContent = "La source et la destination doivent etre differentes.";
           status.className = "note dangerText";
           return;
         }
@@ -809,6 +874,11 @@
           status.textContent = "Adresse IP invalide.";
           status.className = "note dangerText";
           return;
+        }
+
+        if (!payload.description) {
+          const decision = payload.action === "deny" ? "DROP" : "ALLOW";
+          payload.description = `${hostNameFromIp(payload.src_ip)} vers ${hostNameFromIp(payload.dst_ip)} - ${payload.proto.toUpperCase()} - ${decision}`;
         }
 
         try {
@@ -876,11 +946,16 @@
       }
 
       function renderLastAction(summary, events) {
-        const container = document.getElementById("lastActionCard");
+        const containers = [
+          document.getElementById("lastActionCard"),
+          document.getElementById("proofLastAction")
+        ].filter(Boolean);
         const action = (summary || {}).last_action || null;
         if (!action) {
-          container.className = "lastActionCard";
-          container.innerHTML = "<strong>Aucune action observee</strong><span>Genere du trafic avec un test Mininet pour voir la decision du controleur.</span>";
+          for (const container of containers) {
+            container.className = container.id === "proofLastAction" ? "lastActionCard proofAction" : "lastActionCard";
+            container.innerHTML = "<strong>Aucune action observee</strong><span>Genere du trafic avec un test Mininet pour voir la decision du controleur.</span>";
+          }
           return;
         }
 
@@ -895,12 +970,45 @@
                 : `decision sur S${action.switch}`)
           : "controleur Ryu";
         const cardClass = decision === "DROP" ? "drop" : (decision === "ALLOW" ? "allow" : "neutral");
-
-        container.className = "lastActionCard " + cardClass;
-        container.innerHTML = `
+        const markup = `
           <strong>${html(src)} -> ${html(dst)}</strong>
           <span>${html(String(action.proto || "ANY").toUpperCase())} | ${html(decision)} | ${html(switchText)}</span>
           <small>${html(action.message || "")}</small>
+        `;
+
+        for (const container of containers) {
+          const extraClass = container.id === "proofLastAction" ? " proofAction" : "";
+          container.className = "lastActionCard " + cardClass + extraClass;
+          container.innerHTML = markup;
+        }
+      }
+
+      function sparklineMarkup(history) {
+        const points = (history || []).map((item) => Number(item.packets || 0));
+        if (points.length < 2) return "";
+
+        const width = 320;
+        const height = 82;
+        const min = Math.min(...points);
+        const max = Math.max(...points);
+        const spread = Math.max(1, max - min);
+        const step = width / Math.max(1, points.length - 1);
+        const path = points.map((value, index) => {
+          const x = Math.round(index * step);
+          const y = Math.round(height - 12 - ((value - min) / spread) * (height - 24));
+          return `${x},${y}`;
+        }).join(" ");
+
+        return `
+          <div class="sparkLine">
+            <div>
+              <span>Paquets dans le temps</span>
+              <small>${html(points[0])} -> ${html(points[points.length - 1])} paquets</small>
+            </div>
+            <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolution des paquets OpenFlow">
+              <polyline points="${path}"></polyline>
+            </svg>
+          </div>
         `;
       }
 
@@ -926,7 +1034,29 @@
             <i class="dropBar" style="width:${dropWidth}%"></i>
           </div>
           <small>${total} flux OpenFlow observes</small>
+          ${sparklineMarkup((summary || {}).history || [])}
         `;
+      }
+
+      function renderProofStats(summary) {
+        const container = document.getElementById("proofStats");
+        if (!container) return;
+
+        const stats = [
+          ["Packet-In", Number((summary || {}).packet_in_count || 0), "Paquets inconnus envoyes a Ryu"],
+          ["Flow-Mod", Number((summary || {}).flow_mod_count || 0), "Regles installees sur OVS"],
+          ["ALLOW", Number((summary || {}).allowed_flows || 0), "Flux autorises observes"],
+          ["DROP", Number((summary || {}).blocked_flows || 0), "Flux bloques observes"],
+          ["Paquets", Number((summary || {}).total_packets || 0), "Compteurs OpenFlow"]
+        ];
+
+        container.innerHTML = stats.map(([label, value, hint]) => `
+          <div>
+            <span>${html(label)}</span>
+            <strong>${html(value)}</strong>
+            <small>${html(hint)}</small>
+          </div>
+        `).join("");
       }
 
       function eventLabel(type) {
@@ -945,13 +1075,45 @@
         return labels[type] || "Info";
       }
 
+      function eventText(event) {
+        const meta = event.meta || {};
+        const src = hostNameFromIp(meta.src_ip);
+        const dst = hostNameFromIp(meta.dst_ip);
+        const proto = String(meta.proto || "any").toUpperCase();
+        const sw = meta.switch ? `S${meta.switch}` : "Ryu";
+
+        if (event.type === "packet_in") {
+          return `Packet-In recu : ${src} vers ${dst} | ${proto} | entree ${sw}`;
+        }
+        if (event.type === "decision") {
+          const decision = String(meta.decision || "").toUpperCase() || "DECISION";
+          return `Decision du controleur : ${decision} pour ${src} vers ${dst} | ${proto}`;
+        }
+        if (event.type === "flow_mod") {
+          return `Flow-Mod installe : ${src} vers ${dst} | ${proto} | ${sw}`;
+        }
+        if (event.type === "flow_blocked") {
+          return `Flux bloque : ${src} vers ${dst} | ${proto} | DROP sur ${sw}`;
+        }
+        if (event.type === "policy_create") {
+          const decision = String(meta.decision || "").toUpperCase() || "POLICY";
+          return `Regle creee : ${src} vers ${dst} | ${proto} | ${decision}`;
+        }
+        if (event.type === "policy_toggle") {
+          const state = meta.enabled ? "activee" : "desactivee";
+          return `Regle ${state} : ${src} vers ${dst} | ${proto}`;
+        }
+
+        return event.message || "";
+      }
+
       function eventMarkup(events, limit) {
         const latest = (events || []).slice(0, limit);
         if (!latest.length) return "<p class='empty'>Aucun evenement.</p>";
         return latest.map((event) => `
           <div class="eventItem event-${html(event.type || "info")}">
             <span><b>${html(eventLabel(event.type))}</b>${html(event.time)}</span>
-            <p>${html(event.message)}</p>
+            <p>${html(eventText(event))}</p>
           </div>
         `).join("");
       }
@@ -1020,12 +1182,14 @@
 
           renderTopology();
           renderCommandCatalog();
+          renderRuleHostOptions();
           renderLastAction(summary, events);
           renderFlowChart(summary);
           renderTestSummary(lastTestSummary);
           renderRules(rules);
           renderEvents(events);
           renderFlows(flows);
+          renderProofStats(summary);
           updateProof(events);
         } catch (error) {
           document.getElementById("apiStatus").textContent = "Ryu indisponible";
@@ -1033,12 +1197,14 @@
           document.getElementById("uptime").textContent = "Verifier ./scripts/run_controller.sh";
           renderTopology();
           renderCommandCatalog();
+          renderRuleHostOptions();
           renderLastAction({}, []);
           renderFlowChart({});
           renderTestSummary(lastTestSummary);
           renderRules([]);
           renderEvents([]);
           renderFlows([]);
+          renderProofStats({});
           updateProof([]);
         }
       }
